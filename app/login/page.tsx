@@ -1,42 +1,7 @@
-'use client'
+import { Suspense } from 'react'
+import LoginPageClient from './login-page-client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { signIn } from 'next-auth/react'
-
-export default function LoginPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/'
-
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    const result = await signIn('credentials', {
-      email,
-      password,
-      redirect: false,
-    })
-
-    setLoading(false)
-
-    if (result?.error) {
-      setError('Invalid email or password')
-      return
-    }
-
-    router.push(callbackUrl)
-    router.refresh()
-  }
-
+function LoginPageFallback() {
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center px-6 py-10">
@@ -63,59 +28,20 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-200">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/20 focus:bg-white/10"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-200">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/20 focus:bg-white/10"
-                  placeholder="Your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-
-              {error ? (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-                  {error}
-                </div>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="h-11 w-full rounded-xl bg-white text-sm font-medium text-black transition hover:bg-zinc-200 disabled:opacity-60"
-              >
-                {loading ? 'Logging in...' : 'Log in'}
-              </button>
-
-              <p className="text-center text-sm text-zinc-400">
-                Don’t have an account?{' '}
-                <Link href="/register" className="text-white underline underline-offset-4">
-                  Create one
-                </Link>
-              </p>
-            </form>
+            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-300">
+              Loading...
+            </div>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageClient />
+    </Suspense>
   )
 }
