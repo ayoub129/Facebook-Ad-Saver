@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
       description: body.description || '',
       ctaText: body.ctaText || '',
       ctaUrl: body.ctaUrl || '',
+      domain: body.domain || '',
       landingPageUrl: body.landingPageUrl || '',
       platform: body.platform || 'facebook_ad_library',
       status: body.status || '',

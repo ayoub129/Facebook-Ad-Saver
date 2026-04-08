@@ -58,6 +58,7 @@ export default function Sidebar() {
   const [renameTarget, setRenameTarget] = useState<BoardActionTarget | null>(null)
   const [moveTarget, setMoveTarget] = useState<BoardActionTarget | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BoardActionTarget | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
 
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -343,17 +344,58 @@ export default function Sidebar() {
                             <div
                               key={subboard._id}
                               className={`relative group ${isSubboardMenuOpen ? 'z-50' : 'z-0'}`}
-                            >
-                              <div
-                                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs transition-all duration-200 lg:px-3 lg:py-2 lg:text-sm"
-                                style={{
-                                  backgroundColor: isSelected
-                                    ? 'rgb(101, 84, 192)'
-                                    : 'transparent',
-                                  color: isSelected ? 'white' : 'rgb(113, 113, 122)',
-                                  fontWeight: isSelected ? '600' : '500',
-                                }}
-                              >
+                              
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                setDragOverId(subboard._id)
+                              }}
+
+                              onDragLeave={() => {
+                                setDragOverId(null)
+                              }}
+
+                              onDrop={async (e) => {
+                                e.preventDefault()
+                                setDragOverId(null)
+
+                                const adId = e.dataTransfer.getData('adId')
+                                if (!adId) return
+
+                                try {
+                                  await fetch(`/api/ads/${adId}`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      boardId: subboard._id,
+                                    }),
+                                  })
+
+                                  // 🔥 optional: auto switch to that board
+                                  setSelectedBoardId(subboard._id)
+
+                                } catch (err) {
+                                  console.error('Move failed', err)
+                                }
+                              }}
+                            >   
+                         <div
+                                  className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 transition-all duration-150
+                                    ${
+                                      dragOverId === subboard._id
+                                        ? 'bg-primary/20 ring-2 ring-primary scale-[1.02]'
+                                        : ''
+                                    }
+                                  `}
+                                  style={{
+                                    backgroundColor: isSelected
+                                      ? 'rgb(101, 84, 192)'
+                                      : dragOverId === subboard._id
+                                      ? 'rgba(101, 84, 192, 0.15)'
+                                      : 'transparent',
+                                    color: isSelected ? 'white' : 'rgb(113, 113, 122)',
+                                    fontWeight: isSelected ? '600' : '500',
+                                  }}
+                                >
                                 <button
                                   onClick={() => {
                                     setSelectedBoardId(subboard._id)

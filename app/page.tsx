@@ -1,6 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import Sidebar from '@/components/sidebar'
 import AdGrid from '@/components/ad-grid'
 import AdDetailView from '@/components/ad-detail-view'
@@ -8,12 +10,33 @@ import BoardOverview from '@/components/board-overview'
 import { useBoards } from '@/components/ui/boards-provider'
 
 export default function Home() {
+  const router = useRouter()
+  const { data: session, status } = useSession()
+
   const [selectedAdId, setSelectedAdId] = useState<string | null>(null)
   const { selectedBoard, selectedBoardId, setSelectedBoardId } = useBoards()
 
   const isParentBoard = useMemo(() => {
     return Boolean(selectedBoard && !selectedBoard.parentBoardId)
   }, [selectedBoard])
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/login?callbackUrl=/')
+    }
+  }, [status, router])
+
+  if (status === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background text-foreground">
+        Loading...
+      </div>
+    )
+  }
+
+  if (status === 'unauthenticated') {
+    return null
+  }
 
   if (selectedAdId) {
     return (
@@ -25,7 +48,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen bg-background w-screen overflow-hidden">
+    <div className="flex h-screen w-screen overflow-hidden bg-background">
       <Sidebar />
 
       {isParentBoard && selectedBoardId ? (

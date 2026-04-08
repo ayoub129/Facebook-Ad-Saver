@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, LogOut, User } from 'lucide-react'
+import { signOut } from 'next-auth/react'
 import { Input } from '@/components/ui/input'
 import AdCard, { type DashboardAd } from './ad-card'
 import { useBoards } from '@/components/ui/boards-provider'
@@ -35,6 +36,10 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [columns, setColumns] = useState<DashboardAd[][]>([])
   const [deleteTarget, setDeleteTarget] = useState<AdItem | null>(null)
+  const [isSigningOut, setIsSigningOut] = useState(false)
+
+  // 🔥 NEW
+  const [columnsCount, setColumnsCount] = useState(4)
 
   const handleDeleteAd = (adId: string) => {
     const ad = ads.find((item) => item._id === adId)
@@ -62,6 +67,19 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
       console.error(error)
       alert('Failed to delete ad')
       throw error
+    }
+  }
+
+  const handleSignOut = async () => {
+    try {
+      setIsSigningOut(true)
+      setShowProfileMenu(false)
+      await signOut({ callbackUrl: '/login' })
+    } catch (error) {
+      console.error('Sign out failed:', error)
+      alert('Failed to sign out')
+    } finally {
+      setIsSigningOut(false)
     }
   }
 
@@ -161,6 +179,17 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     return nextAds
   }, [ads, searchTerm, sortBy])
 
+  // 🔥 UPDATED: dynamic columns
+  useEffect(() => {
+    const cols: DashboardAd[][] = Array.from({ length: columnsCount }, () => [])
+
+    filteredAds.forEach((ad, index) => {
+      cols[index % columnsCount].push(ad)
+    })
+
+    setColumns(cols)
+  }, [filteredAds, columnsCount])
+
   const handleVideoPlay = (id: string) => {
     setPlayingVideoId(id)
   }
@@ -176,37 +205,13 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     { label: 'Z → A', value: 'za' },
   ]
 
-  const getColumnCount = () => {
-    if (typeof window === 'undefined') return 4
-    if (window.innerWidth >= 1536) return 4
-    if (window.innerWidth >= 1280) return 3
-    if (window.innerWidth >= 768) return 2
-    return 1
-  }
-
-  useEffect(() => {
-    const buildColumns = () => {
-      const colCount = getColumnCount()
-      const cols: DashboardAd[][] = Array.from({ length: colCount }, () => [])
-
-      filteredAds.forEach((ad, index) => {
-        cols[index % colCount].push(ad)
-      })
-
-      setColumns(cols)
-    }
-
-    buildColumns()
-    window.addEventListener('resize', buildColumns)
-
-    return () => window.removeEventListener('resize', buildColumns)
-  }, [filteredAds])
-
   return (
     <>
       <div className="flex h-screen flex-1 min-w-0 flex-col bg-background">
         <div className="border-b border-border bg-background px-6 py-4">
           <div className="flex items-center justify-between gap-4">
+
+            {/* LEFT */}
             <div className="flex min-w-[180px] items-center gap-1 text-sm font-medium text-foreground">
               {breadcrumbItems.length > 0 ? (
                 breadcrumbItems.map((item, index) => {
@@ -226,9 +231,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
                         {item.name}
                       </button>
 
-                      {!isLast && (
-                        <span className="text-muted-foreground">/</span>
-                      )}
+                      {!isLast && <span className="text-muted-foreground">/</span>}
                     </div>
                   )
                 })
@@ -237,6 +240,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
               )}
             </div>
 
+            {/* SEARCH */}
             <div className="flex-1 max-w-xl">
               <Input
                 placeholder="Search ads..."
@@ -246,7 +250,32 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
               />
             </div>
 
-            <div className="relative flex items-center gap-3">
+            {/* RIGHT */}
+            <div className="flex items-center gap-3">
+
+              {/* 🔥 GRID CONTROLLER */}
+              <div className="flex items-center gap-3">
+  <span className="text-sm text-muted-foreground">Grid</span>
+
+  <div className="flex items-center gap-2">
+    {/* Slider */}
+    <input
+      type="range"
+      min={2}
+      max={6}
+      step={1}
+      value={columnsCount}
+      onChange={(e) => setColumnsCount(Number(e.target.value))}
+      className="w-28 h-1.5 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+    />
+
+    {/* Value */}
+    <span className="text-sm font-medium text-foreground w-5 text-center">
+      {columnsCount}
+    </span>
+  </div>
+</div>
+              {/* SORT */}
               <div className="relative">
                 <button
                   type="button"
@@ -262,12 +291,11 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
                     {sortOptions.map((option) => (
                       <button
                         key={option.value}
-                        type="button"
                         onClick={() => {
                           setSortBy(option.value)
                           setShowSortMenu(false)
                         }}
-                        className="w-full cursor-pointer px-3 py-2 text-left text-sm transition hover:bg-muted"
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                       >
                         {option.label}
                       </button>
@@ -276,27 +304,24 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
                 )}
               </div>
 
+              {/* PROFILE */}
               <div className="relative">
                 <button
-                  type="button"
                   onClick={() => setShowProfileMenu(!showProfileMenu)}
-                  className="rounded-lg p-2 transition hover:bg-muted cursor-pointer"
+                  className="cursor-pointer rounded-lg p-2 hover:bg-muted"
                 >
                   <User className="h-5 w-5" />
                 </button>
 
                 {showProfileMenu && (
-                  <div className="absolute right-0 z-50 mt-2 min-w-[150px] overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+                  <div className="absolute right-0 z-50 mt-2 min-w-[150px] rounded-lg border border-border bg-card shadow-lg">
                     <button
-                      type="button"
-                      onClick={() => {
-                        console.log('Signing out...')
-                        setShowProfileMenu(false)
-                      }}
-                      className="flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm transition hover:bg-muted"
+                      onClick={handleSignOut}
+                      disabled={isSigningOut}
+                      className="flex w-full items-center gap-2 px-4 py-3 text-sm hover:bg-muted"
                     >
-                      <LogOut className="h-4 w-4 flex-shrink-0" />
-                      <span>Sign out</span>
+                      <LogOut className="h-4 w-4" />
+                      {isSigningOut ? 'Signing out...' : 'Sign out'}
                     </button>
                   </div>
                 )}
@@ -305,7 +330,8 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
           </div>
         </div>
 
-        <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-6 py-6">
+        {/* GRID */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
           {loadingAds ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">
               Loading ads...
@@ -315,17 +341,9 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
               No ads yet
             </div>
           ) : (
-            <div
-              className="
-                grid gap-5 items-start
-                grid-cols-1
-                md:grid-cols-2
-                xl:grid-cols-3
-                2xl:grid-cols-4
-              "
-            >
+            <div className="flex gap-5 w-full">
               {columns.map((col, colIndex) => (
-                <div key={colIndex} className="flex min-w-0 flex-col gap-5">
+                <div key={colIndex} className="flex flex-col gap-5 flex-1">
                   {col.map((ad) => (
                     <AdCard
                       key={ad._id}

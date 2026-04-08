@@ -9,6 +9,7 @@ export interface IAd {
   description: string;
   ctaText: string;
   ctaUrl: string;
+  domain: string;
   landingPageUrl: string;
   platform: string;
   status: string;
@@ -55,6 +56,10 @@ const AdSchema = new Schema<IAd>(
       default: "",
     },
     ctaUrl: {
+      type: String,
+      default: "",
+    },
+    domain: {
       type: String,
       default: "",
     },

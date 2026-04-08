@@ -9,7 +9,8 @@ export type DashboardAd = {
   boardIds: string[]
   advertiserName: string
   adLibraryId: string
-  adCopy: string
+  adCopy: string,
+  domain: string,
   headline: string
   description: string
   ctaText: string
@@ -148,10 +149,46 @@ export default function AdCard({
     videoRef.current.currentTime = percent * videoRef.current.duration
   }
 
+  const [isDragging, setIsDragging] = useState(false)
+
   return (
     <Card
-      className=" overflow-hidden hover:shadow-xl transition-all duration-300 bg-card border-border cursor-pointer group break-inside-avoid"
+    className={`overflow-hidden hover:shadow-xl transition-all duration-300 bg-card border-border cursor-pointer group break-inside-avoid ${
+      isDragging ? 'opacity-0' : ''
+    }`}
       onMouseEnter={() => setIsHovering(true)}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('adId', ad._id)
+      
+        setIsDragging(true)
+      
+        // 🔥 Create custom preview
+        const dragPreview = e.currentTarget.cloneNode(true) as HTMLElement
+      
+        dragPreview.style.position = 'absolute'
+        dragPreview.style.top = '-9999px'
+        dragPreview.style.left = '-9999px'
+        dragPreview.style.width = `${e.currentTarget.offsetWidth}px`
+        dragPreview.style.opacity = '1'
+        dragPreview.style.transform = 'scale(1)'
+        dragPreview.style.pointerEvents = 'none'
+        dragPreview.style.boxShadow = '0 10px 30px rgba(0,0,0,0.2)'
+        dragPreview.style.borderRadius = '12px'
+      
+        document.body.appendChild(dragPreview)
+      
+        e.dataTransfer.setDragImage(dragPreview, 50, 50)
+      
+        // cleanup after
+        setTimeout(() => {
+          document.body.removeChild(dragPreview)
+        }, 0)
+      }}      
+      onDragEnd={(e) => {
+        setIsDragging(false)
+      }}
+      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
       onMouseLeave={() => setIsHovering(false)}
     >
       <div className="p-2 sm:p-3 pb-1.5 sm:pb-2 flex items-center justify-between border-b border-border/50 bg-card/50" onClick={onClick}>

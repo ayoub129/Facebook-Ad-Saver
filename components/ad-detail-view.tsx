@@ -4,10 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
-  Share2,
-  Save,
-  MessageCircle,
-  MoreHorizontal,
   Copy,
   Download,
   Image as ImageIcon,
@@ -17,6 +13,8 @@ import {
   Volume2,
   VolumeX,
   Maximize,
+  Pencil,
+  ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -61,6 +59,20 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   const [isSavingBoard, setIsSavingBoard] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onBack()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onBack])
 
   useEffect(() => {
     const fetchAd = async () => {
@@ -153,6 +165,17 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
       return parent ? `${parent.name} / ${board.name}` : board.name
     })
   }, [ad?.boardIds, boards])
+
+  const domainText = useMemo(() => {
+    if (!ad?.ctaUrl) return ''
+
+    try {
+      const url = new URL(ad.ctaUrl)
+      return url.hostname.replace(/^www\./, '').toUpperCase()
+    } catch {
+      return ''
+    }
+  }, [ad?.ctaUrl])
 
   const formatTime = (seconds: number) => {
     if (!seconds || Number.isNaN(seconds)) return '0:00'
@@ -292,22 +315,22 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
   const handleCopyScript = async () => {
     if (!ad || !hasVideo || !videoUrl) return
-  
+
     try {
       setIsCopyingScript(true)
-  
+
       const scriptText =
         (await transcribeVideoUrlInBrowser(videoUrl)) ||
         ad.adCopy?.trim() ||
         ad.headline?.trim() ||
         ad.description?.trim() ||
         ''
-  
+
       if (!scriptText) {
         alert('No script available.')
         return
       }
-  
+
       await navigator.clipboard.writeText(scriptText)
       alert('Script copied successfully.')
     } catch (err) {
@@ -317,6 +340,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
       setIsCopyingScript(false)
     }
   }
+
   const handleDownloadMedia = async () => {
     if (!ad) return
 
@@ -502,51 +526,67 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
             <span className="truncate text-sm font-semibold">{brand}</span>
           </div>
-
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-[26%] overflow-y-auto border-r border-border bg-card p-6">
-          <div>
-            <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-foreground">
-              Ad Copy
-            </h2>
+        <div className="w-[26%] overflow-y-auto border-r border-border bg-[#1d143b] p-6 text-white">
+          <div className="mx-auto max-w-md">
+            <div className="mb-6 flex items-center gap-3 text-violet-200">
+              <Pencil className="h-5 w-5" />
+              <h2 className="text-xl font-bold uppercase tracking-[0.18em]">
+                Ad Copy
+              </h2>
+            </div>
 
-            <div className="space-y-4">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                {ad.adCopy || 'No ad copy available'}
-              </p>
+            <div className="space-y-6">
+              <div>
+                <p className="whitespace-pre-wrap text-[15px] leading-6 text-white/95">
+                  {ad.adCopy || 'No ad copy available'}
+                </p>
+              </div>
 
-              {(ad.headline || ad.description) && (
-                <div className="space-y-2 border-t border-border pt-4">
+              <div className="border-t border-white/15" />
+
+              {(domainText || ad.headline || ad.description) && (
+                <div className="space-y-3">
+                  {domainText && (
+                    <p className="text-[14px] font-extrabold uppercase tracking-wide text-white">
+                      {domainText}
+                    </p>
+                  )}
+
                   {ad.headline && (
-                    <div>
-                      <p className="mb-1 text-xs font-semibold text-muted-foreground">
-                        Headline
-                      </p>
-                      <p className="text-sm text-foreground">{ad.headline}</p>
-                    </div>
+                    <p className="text-lg font-bold leading-8 text-white">
+                      {ad.headline}
+                    </p>
                   )}
 
                   {ad.description && (
-                    <div>
-                      <p className="mb-1 text-xs font-semibold text-muted-foreground">
-                        Description
-                      </p>
-                      <p className="text-sm text-foreground">{ad.description}</p>
-                    </div>
+                    <p className="text-[14px] leading-6 text-white/75">
+                      {ad.description}
+                    </p>
                   )}
                 </div>
               )}
 
-              <div className="space-y-3 border-t border-border pt-4">
-                <div>
-                  <p className="mb-2 text-xs font-semibold text-muted-foreground">
+              <div className="border-t border-white/15" />
+
+              <div className="flex flex-wrap items-center gap-4 pt-1">
+                <div className="flex items-center gap-2 text-violet-200">
+                  <ExternalLink className="h-4 w-4" />
+                  <span className="text-sm font-semibold uppercase tracking-[0.16em]">
                     CTA
-                  </p>
-                  <p className="text-sm text-foreground">{ad.ctaText || 'N/A'}</p>
+                  </span>
                 </div>
+
+                <a href={ad.domain} className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1d143b] shadow-sm">
+                  {ad.ctaText || 'N/A'}
+                </a>
+
+                <span className="text-base font-medium text-white/90">
+                  {ad.ctaText || 'N/A'}
+                </span>
               </div>
             </div>
           </div>
@@ -560,9 +600,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
               onMouseLeave={() => setIsHoveringMedia(false)}
             >
               {hasVideo && !videoError ? (
-                <div
-                  className="relative w-full max-h-[calc(100vh-140px)] overflow-hidden rounded-2xl bg-black"
-                >
+                <div className="relative w-full max-h-[calc(100vh-140px)] overflow-hidden rounded-2xl bg-black">
                   <video
                     ref={videoRef}
                     src={videoUrl}
@@ -829,11 +867,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                     className="flex h-20 cursor-pointer flex-col items-center justify-center gap-2"
                     asChild
                   >
-                    <a
-                      href={ad.ctaUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={ad.ctaUrl} target="_blank" rel="noreferrer">
                       <Eye className="h-5 w-5" />
                       <span className="text-xs">View Landing Page</span>
                     </a>

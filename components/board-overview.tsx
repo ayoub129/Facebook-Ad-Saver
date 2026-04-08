@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Folder, MoreHorizontal, Pencil, Trash2, ArrowRightLeft } from 'lucide-react'
+import { Folder, MoreHorizontal, Pencil, Trash2, ArrowRightLeft, User, LogOut } from 'lucide-react'
+import { signOut } from 'next-auth/react'
 import { useBoards } from '@/components/ui/boards-provider'
 import RenameBoardModal from '@/components/rename-board-modal'
 import MoveBoardModal from '@/components/move-board-modal'
@@ -46,6 +47,8 @@ export default function BoardOverview({
 
   const [ads, setAds] = useState<DashboardAd[]>([])
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
   const [renameTarget, setRenameTarget] = useState<BoardActionTarget | null>(null)
   const [moveTarget, setMoveTarget] = useState<BoardActionTarget | null>(null)
@@ -53,6 +56,8 @@ export default function BoardOverview({
 
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
+  const profileMenuRef = useRef<HTMLDivElement | null>(null)
+  const profileButtonRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     const fetchAds = async () => {
@@ -75,19 +80,24 @@ export default function BoardOverview({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (!openMenuId) return
-
       const target = event.target as Node
 
-      if (menuRef.current?.contains(target)) return
-      if (menuButtonRef.current?.contains(target)) return
+      if (openMenuId) {
+        if (menuRef.current?.contains(target)) return
+        if (menuButtonRef.current?.contains(target)) return
+        setOpenMenuId(null)
+      }
 
-      setOpenMenuId(null)
+      if (showProfileMenu) {
+        if (profileMenuRef.current?.contains(target)) return
+        if (profileButtonRef.current?.contains(target)) return
+        setShowProfileMenu(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [openMenuId])
+  }, [openMenuId, showProfileMenu])
 
   const parentBoard = useMemo(
     () => boards.find((board) => board._id === parentBoardId) || null,
@@ -120,13 +130,56 @@ export default function BoardOverview({
     setOpenMenuId(null)
   }
 
+  const handleSignOut = async () => {
+    try {
+      setIsSigningOut(true)
+      setShowProfileMenu(false)
+      await signOut({ callbackUrl: '/login' })
+    } catch (error) {
+      console.error('Sign out failed:', error)
+      alert('Failed to sign out')
+    } finally {
+      setIsSigningOut(false)
+    }
+  }
+
   return (
     <>
       <div className="flex h-screen flex-1 min-w-0 flex-col bg-background">
         <div className="border-b border-border bg-background px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Folder className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">{parentBoard?.name || 'Board'}</h2>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Folder className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">{parentBoard?.name || 'Board'}</h2>
+            </div>
+
+            <div className="relative">
+              <button
+                ref={profileButtonRef}
+                type="button"
+                onClick={() => setShowProfileMenu((prev) => !prev)}
+                className="cursor-pointer rounded-lg p-2 transition hover:bg-muted"
+              >
+                <User className="h-5 w-5" />
+              </button>
+
+              {showProfileMenu && (
+                <div
+                  ref={profileMenuRef}
+                  className="absolute right-0 z-50 mt-2 min-w-[150px] overflow-hidden rounded-lg border border-border bg-card shadow-lg"
+                >
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                    className="flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-4 py-3 text-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <LogOut className="h-4 w-4 flex-shrink-0" />
+                    <span>{isSigningOut ? 'Signing out...' : 'Sign out'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -152,7 +205,7 @@ export default function BoardOverview({
                         setOpenMenuId(null)
                         onOpenSubboard(subboard._id)
                       }}
-                      className="w-full rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition hover:shadow-md cursor-pointer"
+                      className="w-full cursor-pointer rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition hover:shadow-md"
                       type="button"
                     >
                       <div className="mb-4 flex items-start justify-between gap-3">
@@ -167,7 +220,7 @@ export default function BoardOverview({
                             e.stopPropagation()
                             setOpenMenuId((prev) => (prev === subboard._id ? null : subboard._id))
                           }}
-                          className="rounded-full p-2 hover:bg-muted cursor-pointer"
+                          className="cursor-pointer rounded-full p-2 hover:bg-muted"
                           type="button"
                           title="Subboard actions"
                         >
@@ -210,7 +263,8 @@ export default function BoardOverview({
                     {isMenuOpen && (
                       <div
                         ref={isMenuOpen ? menuRef : null}
-                        className="absolute right-4 top-16 min-w-[170px] rounded-xl border border-border bg-card shadow-lg overflow-hidden z-[999]">
+                        className="absolute right-4 top-16 z-[999] min-w-[170px] overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+                      >
                         <button
                           onClick={() =>
                             setRenameTarget({
@@ -220,9 +274,9 @@ export default function BoardOverview({
                               type: 'subboard',
                             })
                           }
-                          type='button'
-className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted first:rounded-t-xl last:rounded-b-xl cursor-pointer">                          
-                        
+                          type="button"
+                          className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted first:rounded-t-xl last:rounded-b-xl"
+                        >
                           <Pencil className="h-4 w-4" />
                           Rename
                         </button>
@@ -237,8 +291,8 @@ className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted first
                             })
                           }
                           type="button"
-className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted first:rounded-t-xl last:rounded-b-xl cursor-pointer">                          
-                        
+                          className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted first:rounded-t-xl last:rounded-b-xl"
+                        >
                           <ArrowRightLeft className="h-4 w-4" />
                           Move
                         </button>
@@ -252,7 +306,7 @@ className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted first
                               type: 'subboard',
                             })
                           }
-                          className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-muted cursor-pointer"
+                          className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-muted"
                           type="button"
                         >
                           <Trash2 className="h-4 w-4" />

@@ -95,3 +95,47 @@ export async function DELETE(
       )
     }
   }
+
+  export async function PATCH(
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+  ) {
+    try {
+      await connectToDatabase()
+  
+      const { id } = await params
+      const body = await req.json()
+  
+      const { boardId } = body
+  
+      if (!boardId) {
+        return NextResponse.json(
+          { success: false, message: 'boardId required' },
+          { status: 400 }
+        )
+      }
+  
+      const ad = await Ad.findById(id)
+  
+      if (!ad) {
+        return NextResponse.json(
+          { success: false, message: 'Ad not found' },
+          { status: 404 }
+        )
+      }
+  
+      // 🔥 Replace board OR push (your choice)
+      ad.boardIds = [boardId]
+  
+      await ad.save()
+  
+      return NextResponse.json({ success: true })
+    } catch (error) {
+      console.error('PATCH move ad error:', error)
+  
+      return NextResponse.json(
+        { success: false, message: 'Failed to move ad' },
+        { status: 500 }
+      )
+    }
+  }
