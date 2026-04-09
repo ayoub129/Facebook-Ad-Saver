@@ -472,9 +472,8 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
         throw new Error(data?.message || 'Failed to save ad to board')
       }
   
-      const nextBoardIds = Array.from(new Set([...(ad.boardIds || []), boardId]))
-  
-      setAd((prev) => (prev ? { ...prev, boardIds: nextBoardIds } : prev))
+      // Replace boardIds entirely instead of merging
+      setAd((prev) => (prev ? { ...prev, boardIds: [boardId] } : prev))
       setSelectedBoard(boardName)
       setShowBoardDropdown(false)
     } catch (err) {
@@ -484,7 +483,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
       setIsSavingBoard(false)
     }
   }
-
+  
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background text-muted-foreground">

@@ -1,47 +1,36 @@
 import mongoose, { Schema, Model, models } from "mongoose";
 
 export interface IBoard {
+  userId: mongoose.Types.ObjectId;
   name: string;
   slug: string;
   parentBoardId: mongoose.Types.ObjectId | null;
   order: number;
+  source: string;
   createdAt?: Date;
   updatedAt?: Date;
-  source: string;
 }
 
 const BoardSchema = new Schema<IBoard>(
   {
-    name: {
-      type: String,
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
       required: true,
-      trim: true,
+      index: true,
     },
-    slug: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    name: { type: String, required: true, trim: true },
+    slug: { type: String, required: true, trim: true },
     parentBoardId: {
       type: Schema.Types.ObjectId,
       ref: "Board",
       default: null,
     },
-    order: {
-      type: Number,
-      default: 0,
-    },
-    source:{
-      type: String,
-      default: 'app'
-    } 
-
+    order: { type: Number, default: 0 },
+    source: { type: String, default: "app" },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 const Board: Model<IBoard> = models.Board || mongoose.model<IBoard>("Board", BoardSchema);
-
 export default Board;
