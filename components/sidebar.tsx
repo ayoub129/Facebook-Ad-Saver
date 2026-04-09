@@ -11,6 +11,7 @@ import {
   Search,
   Trash2,
   ArrowRightLeft,
+  GripVertical,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +37,17 @@ type BoardActionTarget = {
   type: 'parent' | 'subboard'
 }
 
+type FlatBoard = {
+  _id: string
+  name: string
+  parentBoardId: string | null
+  order?: number
+}
+
+type DragItem =
+  | { type: 'ad'; id: string }
+  | { type: 'board'; id: string }
+
 export default function Sidebar() {
   const {
     topLevelBoards,
@@ -49,7 +61,7 @@ export default function Sidebar() {
     loading,
   } = useBoards()
 
-  const [expandedCollections, setExpandedCollections] = useState<string[]>([])
+  const [expandedBoardIds, setExpandedBoardIds] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [forcedParentId, setForcedParentId] = useState<string | null>(null)
@@ -58,15 +70,78 @@ export default function Sidebar() {
   const [renameTarget, setRenameTarget] = useState<BoardActionTarget | null>(null)
   const [moveTarget, setMoveTarget] = useState<BoardActionTarget | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BoardActionTarget | null>(null)
+
   const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const [dragOverPosition, setDragOverPosition] = useState<'inside' | null>(null)
+  const [draggingBoardId, setDraggingBoardId] = useState<string | null>(null)
 
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
   const hasInitializedExpanded = useRef(false)
-  
+
+  const allBoards = useMemo<FlatBoard[]>(() => {
+    const result: FlatBoard[] = []
+
+    const walk = (boards: FlatBoard[]) => {
+      boards.forEach((board) => {
+        result.push(board)
+        const children = getSubboards(board._id) as FlatBoard[]
+        if (children.length > 0) {
+          walk(children)
+        }
+      })
+    }
+
+    walk(topLevelBoards as FlatBoard[])
+    return result
+  }, [topLevelBoards, getSubboards])
+
+  const boardMap = useMemo(() => {
+    return new Map(allBoards.map((board) => [board._id, board]))
+  }, [allBoards])
+
+  const getDescendantIds = (boardId: string): string[] => {
+    const descendants: string[] = []
+
+    const walk = (parentId: string) => {
+      const children = getSubboards(parentId) as FlatBoard[]
+      for (const child of children) {
+        descendants.push(child._id)
+        walk(child._id)
+      }
+    }
+
+    walk(boardId)
+    return descendants
+  }
+
+  const isDescendantOf = (candidateId: string, ancestorId: string) => {
+    return getDescendantIds(ancestorId).includes(candidateId)
+  }
+
+  const getBoardDepth = (boardId: string) => {
+    let depth = 0
+    let current = boardMap.get(boardId)
+
+    while (current?.parentBoardId) {
+      depth += 1
+      current = boardMap.get(current.parentBoardId)
+    }
+
+    return depth
+  }
+
+  const toggleExpanded = (boardId: string) => {
+    setExpandedBoardIds((prev) =>
+      prev.includes(boardId)
+        ? prev.filter((id) => id !== boardId)
+        : [...prev, boardId]
+    )
+  }
+
   useEffect(() => {
     if (!hasInitializedExpanded.current && topLevelBoards.length > 0) {
-      setExpandedCollections([topLevelBoards[0]._id])
+      setExpandedBoardIds([topLevelBoards[0]._id])
       hasInitializedExpanded.current = true
     }
   }, [topLevelBoards])
@@ -74,26 +149,18 @@ export default function Sidebar() {
   useEffect(() => {
     if (!selectedBoardId) return
 
-    const selectedParent = topLevelBoards.find((board) => board._id === selectedBoardId)
-    if (selectedParent) {
-      setExpandedCollections((prev) =>
-        prev.includes(selectedParent._id) ? prev : [...prev, selectedParent._id]
-      )
-      return
+    const chain: string[] = []
+    let current = boardMap.get(selectedBoardId)
+
+    while (current?.parentBoardId) {
+      chain.push(current.parentBoardId)
+      current = boardMap.get(current.parentBoardId)
     }
 
-    const parentWithSelectedChild = topLevelBoards.find((board) =>
-      getSubboards(board._id).some((subboard) => subboard._id === selectedBoardId)
-    )
-
-    if (parentWithSelectedChild) {
-      setExpandedCollections((prev) =>
-        prev.includes(parentWithSelectedChild._id)
-          ? prev
-          : [...prev, parentWithSelectedChild._id]
-      )
+    if (chain.length > 0) {
+      setExpandedBoardIds((prev) => Array.from(new Set([...prev, ...chain])))
     }
-  }, [selectedBoardId, topLevelBoards, getSubboards])
+  }, [selectedBoardId, boardMap])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -115,10 +182,9 @@ export default function Sidebar() {
     name: string
     parentBoardId: string | null
   }) => {
-    const isTopLevel = !data.parentBoardId
-    const siblingCount = isTopLevel
-      ? topLevelBoards.length
-      : getSubboards(data.parentBoardId as string).length
+    const siblingCount = data.parentBoardId
+      ? getSubboards(data.parentBoardId).length
+      : topLevelBoards.length
 
     const newBoard = await createBoard({
       name: data.name,
@@ -130,13 +196,13 @@ export default function Sidebar() {
     setSelectedBoardId(newBoard._id)
 
     if (data.parentBoardId) {
-      setExpandedCollections((prev) =>
+      setExpandedBoardIds((prev) =>
         prev.includes(data.parentBoardId as string)
           ? prev
           : [...prev, data.parentBoardId as string]
       )
     } else {
-      setExpandedCollections((prev) =>
+      setExpandedBoardIds((prev) =>
         prev.includes(newBoard._id) ? prev : [...prev, newBoard._id]
       )
     }
@@ -161,31 +227,306 @@ export default function Sidebar() {
     setOpenMenuId(null)
   }
 
-  const handleMoveSubboard = async (boardId: string, nextParentId: string) => {
+  const handleMoveBoard = async (boardId: string, nextParentId: string | null) => {
     await moveBoard(boardId, nextParentId)
 
-    setExpandedCollections((prev) =>
-      prev.includes(nextParentId) ? prev : [...prev, nextParentId]
-    )
+    if (nextParentId) {
+      setExpandedBoardIds((prev) =>
+        prev.includes(nextParentId) ? prev : [...prev, nextParentId]
+      )
+    }
 
     setMoveTarget(null)
     setOpenMenuId(null)
   }
 
+  const matchesSearch = (board: FlatBoard, term: string): boolean => {
+    if (!term) return true
+    if (board.name.toLowerCase().includes(term)) return true
+
+    const children = getSubboards(board._id) as FlatBoard[]
+    return children.some((child) => matchesSearch(child, term))
+  }
+
   const filteredCollections = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
+    if (!term) return topLevelBoards as FlatBoard[]
+    return (topLevelBoards as FlatBoard[]).filter((board) => matchesSearch(board, term))
+  }, [topLevelBoards, searchTerm])
 
-    if (!term) return topLevelBoards
+  const getMoveParentOptions = useMemo(() => {
+    return allBoards.map((board) => ({
+      _id: board._id,
+      name: `${'— '.repeat(getBoardDepth(board._id))}${board.name}`,
+    }))
+  }, [allBoards, boardMap])
 
-    return topLevelBoards.filter((collection) => {
-      const matchesCollection = collection.name.toLowerCase().includes(term)
-      const matchesSubboards = getSubboards(collection._id).some((subboard) =>
-        subboard.name.toLowerCase().includes(term)
-      )
+  const onBoardDragStart = (e: React.DragEvent, boardId: string) => {
+    const payload: DragItem = { type: 'board', id: boardId }
+    e.dataTransfer.setData('application/json', JSON.stringify(payload))
+    e.dataTransfer.setData('boardId', boardId)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggingBoardId(boardId)
+    setOpenMenuId(null)
+  }
 
-      return matchesCollection || matchesSubboards
-    })
-  }, [topLevelBoards, getSubboards, searchTerm])
+  const onBoardDragEnd = () => {
+    setDraggingBoardId(null)
+    setDragOverId(null)
+    setDragOverPosition(null)
+  }
+
+  const parseDragItem = (e: React.DragEvent): DragItem | null => {
+    try {
+      const json = e.dataTransfer.getData('application/json')
+      if (json) return JSON.parse(json) as DragItem
+    } catch {}
+
+    const adId = e.dataTransfer.getData('adId')
+    if (adId) return { type: 'ad', id: adId }
+
+    const boardId = e.dataTransfer.getData('boardId')
+    if (boardId) return { type: 'board', id: boardId }
+
+    return null
+  }
+
+  const handleDropOnBoard = async (e: React.DragEvent, targetBoard: FlatBoard) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const dragItem = parseDragItem(e)
+    setDragOverId(null)
+    setDragOverPosition(null)
+
+    if (!dragItem) return
+
+    if (dragItem.type === 'ad') {
+      try {
+        await fetch(`/api/ads/${dragItem.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            boardId: targetBoard._id,
+          }),
+        })
+
+        setSelectedBoardId(targetBoard._id)
+        setExpandedBoardIds((prev) =>
+          prev.includes(targetBoard._id) ? prev : [...prev, targetBoard._id]
+        )
+      } catch (err) {
+        console.error('Move ad failed', err)
+      }
+      return
+    }
+
+    if (dragItem.type === 'board') {
+      const draggedBoardId = dragItem.id
+
+      if (draggedBoardId === targetBoard._id) return
+      if (isDescendantOf(targetBoard._id, draggedBoardId)) return
+
+      try {
+        await moveBoard(draggedBoardId, targetBoard._id)
+        setExpandedBoardIds((prev) =>
+          prev.includes(targetBoard._id) ? prev : [...prev, targetBoard._id]
+        )
+      } catch (err) {
+        console.error('Move board failed', err)
+      }
+    }
+  }
+
+  const renderBoardTree = (board: FlatBoard, depth = 0) => {
+    const children = getSubboards(board._id) as FlatBoard[]
+    const isExpanded = expandedBoardIds.includes(board._id)
+    const isSelected = selectedBoardId === board._id
+    const isMenuOpen = openMenuId === board._id
+    const isDragging = draggingBoardId === board._id
+    const isDragOver = dragOverId === board._id && dragOverPosition === 'inside'
+
+    const leftPadding = 4 
+    const childIndentClass =
+      depth === 0
+        ? 'ml-4 border-l border-border/30 pl-2'
+        : depth === 1
+        ? 'ml-6 border-l border-border/25 pl-2'
+        : 'ml-8 border-l border-border/20 pl-2'
+
+    return (
+      <div
+        key={board._id}
+        className={`relative ${isMenuOpen ? 'z-50' : ''}`}
+      >
+        <div
+          draggable
+          onDragStart={(e) => onBoardDragStart(e, board._id)}
+          onDragEnd={onBoardDragEnd}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setDragOverId(board._id)
+            setDragOverPosition('inside')
+          }}
+          onDragLeave={(e) => {
+            const related = e.relatedTarget as Node | null
+            if (related && (e.currentTarget as HTMLElement).contains(related)) return
+            setDragOverId((prev) => (prev === board._id ? null : prev))
+            setDragOverPosition(null)
+          }}
+          onDrop={(e) => handleDropOnBoard(e, board)}
+          className={`
+            group relative flex w-full items-center gap-2 rounded-xl py-2 text-xs font-medium
+            transition-all duration-200 lg:text-sm
+            ${isDragging ? 'opacity-40' : ''}
+            ${isDragOver ? 'scale-[1.015]' : ''}
+          `}
+          style={{
+            paddingLeft: `${leftPadding}px`,
+            paddingRight: '8px',
+            backgroundColor: isSelected
+              ? 'rgba(101, 84, 192, 0.18)'
+              : isDragOver
+              ? 'rgba(101, 84, 192, 0.12)'
+              : 'transparent',
+            color: isSelected ? 'rgb(101, 84, 192)' : 'rgb(63, 63, 70)',
+            boxShadow: isDragOver
+              ? '0 0 0 1px rgba(101, 84, 192, 0.35), 0 10px 30px rgba(101, 84, 192, 0.12)'
+              : 'none',
+          }}
+        >
+          {isDragOver && (
+            <div className="pointer-events-none absolute inset-0 rounded-xl border border-primary/50 bg-primary/5" />
+          )}
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (children.length > 0) {
+                toggleExpanded(board._id)
+              }
+              setOpenMenuId(null)
+            }}
+            className={children.length > 0 ? "relative z-10 flex h-5 w-5 items-center justify-center rounded cursor-pointer hover:bg-primary/10" : "relative z-10 flex h-5 w-5 items-center justify-center rounded" }
+            title={isExpanded ? 'Collapse' : 'Expand'}
+          >
+            {children.length > 0 ? (
+              isExpanded ? (
+                <ChevronDown className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
+              ) : (
+                <ChevronRight className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
+              )
+            ) : (
+              <div className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedBoardId(board._id)
+              setOpenMenuId(null)
+            }}
+            className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5 cursor-pointer text-left"
+          >
+            {/* <GripVertical className={isDragging ? "h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/70 opacity-0 transition group-hover:opacity-100 cursor-grabbing" : "h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/70 opacity-0 transition group-hover:opacity-100 cursor-grab"} /> */}
+            <Folder className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
+            <span className="truncate">{board.name}</span>
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setForcedParentId(board._id)
+              setIsModalOpen(true)
+              setOpenMenuId(null)
+              setExpandedBoardIds((prev) =>
+                prev.includes(board._id) ? prev : [...prev, board._id]
+              )
+            }}
+            className="relative z-10 rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 cursor-pointer"
+            title="Add child board"
+            type="button"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+
+          <button
+            ref={isMenuOpen ? menuButtonRef : null}
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpenMenuId((prev) => (prev === board._id ? null : board._id))
+            }}
+            className="relative z-10 rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 cursor-pointer"
+            title="Board actions"
+            type="button"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {isMenuOpen && (
+          <div
+            ref={isMenuOpen ? menuRef : null}
+            className="absolute right-2 top-full mt-1 min-w-[170px] overflow-hidden rounded-xl border border-border bg-card shadow-lg z-[999]"
+          >
+            <button
+              onClick={() =>
+                setRenameTarget({
+                  _id: board._id,
+                  name: board.name,
+                  parentBoardId: board.parentBoardId,
+                  type: board.parentBoardId ? 'subboard' : 'parent',
+                })
+              }
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer"
+            >
+              <Pencil className="h-4 w-4" />
+              Rename
+            </button>
+
+            <button
+              onClick={() =>
+                setMoveTarget({
+                  _id: board._id,
+                  name: board.name,
+                  parentBoardId: board.parentBoardId,
+                  type: board.parentBoardId ? 'subboard' : 'parent',
+                })
+              }
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer"
+            >
+              <ArrowRightLeft className="h-4 w-4" />
+              Move
+            </button>
+
+            <button
+              onClick={() =>
+                setDeleteTarget({
+                  _id: board._id,
+                  name: board.name,
+                  parentBoardId: board.parentBoardId,
+                  type: board.parentBoardId ? 'subboard' : 'parent',
+                })
+              }
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-muted cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </button>
+          </div>
+        )}
+
+        {isExpanded && children.length > 0 && (
+          <div className={`mt-0.5 space-y-0.5 ${childIndentClass}`}>
+            {children.map((child) => renderBoardTree(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <>
@@ -210,275 +551,7 @@ export default function Sidebar() {
             </div>
           ) : (
             <div className="space-y-1">
-              {filteredCollections.map((collection) => {
-                const subboards = getSubboards(collection._id)
-                const isExpanded = expandedCollections.includes(collection._id)
-                const isCollectionSelected = selectedBoardId === collection._id
-                const isParentMenuOpen = openMenuId === collection._id
-
-                return (
-                  <div
-                    key={collection._id}
-                    className={`relative ${isParentMenuOpen ? 'z-50' : ''}`}
-                  >
-                    <div
-                      className="group flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-medium transition-all duration-200 lg:px-3 lg:py-2.5 lg:text-sm"
-                      style={{
-                        backgroundColor: isCollectionSelected
-                          ? 'rgba(101, 84, 192, 0.08)'
-                          : 'transparent',
-                        color: isCollectionSelected
-                          ? 'rgb(101, 84, 192)'
-                          : 'rgb(63, 63, 70)',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (subboards.length > 0) {
-                            setExpandedCollections((prev) =>
-                              prev.includes(collection._id)
-                                ? prev.filter((id) => id !== collection._id)
-                                : [...prev, collection._id]
-                            )
-                          }
-                          setOpenMenuId(null)
-                        }}
-                        className="flex h-5 w-5 items-center justify-center rounded cursor-pointer hover:bg-primary/10"
-                        title={isExpanded ? 'Collapse' : 'Expand'}
-                      >
-                        {subboards.length > 0 ? (
-                          isExpanded ? (
-                            <ChevronDown className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
-                          ) : (
-                            <ChevronRight className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
-                          )
-                        ) : (
-                          <div className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedBoardId(collection._id)
-                          setOpenMenuId(null)
-                        }}
-                        className="flex min-w-0 flex-1 items-center gap-3 cursor-pointer text-left"
-                      >
-                        <Folder className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
-                        <span className="truncate">{collection.name}</span>
-                      </button>
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setForcedParentId(collection._id)
-                          setIsModalOpen(true)
-                          setOpenMenuId(null)
-                        }}
-                        className="rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 cursor-pointer"
-                        title="Add subboard"
-                        type="button"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-
-                      <button
-                        ref={isParentMenuOpen ? menuButtonRef : null}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setOpenMenuId((prev) => (prev === collection._id ? null : collection._id))
-                        }}
-                        className="rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 cursor-pointer"
-                        title="Board actions"
-                        type="button"
-                      >
-                        <MoreHorizontal className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-
-                    {isParentMenuOpen && (
-                      <div
-                        ref={isParentMenuOpen ? menuRef : null}
-                        className="absolute right-2  mt-1 min-w-[160px] rounded-xl border border-border bg-card shadow-lg z-[60] overflow-hidden"
-                      >
-                        <button
-                          onClick={() =>
-                            setRenameTarget({
-                              _id: collection._id,
-                              name: collection.name,
-                              parentBoardId: collection.parentBoardId,
-                              type: 'parent',
-                            })
-                          }
-                          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted first:rounded-t-xl last:rounded-b-xl cursor-pointer">                          
-
-                          <Pencil className="h-4 w-4" />
-                          Rename
-                        </button>
-                        <button
-                          onClick={() =>
-                            setDeleteTarget({
-                              _id: collection._id,
-                              name: collection.name,
-                              parentBoardId: collection.parentBoardId,
-                              type: 'parent',
-                            })
-                          }
-                          className="flex w-full items-center gap-2 px-3 py-2 text-sm  text-red-500 hover:bg-muted first:rounded-t-xl last:rounded-b-xl cursor-pointer">
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </button>
-                      </div>
-                    )}
-
-                    {isExpanded && subboards.length > 0 && (
-                      <div className="ml-2 mt-0.5 space-y-0.5 border-l border-border/30 pl-2">
-                        {subboards.map((subboard) => {
-                          const isSelected = selectedBoardId === subboard._id
-                          const isSubboardMenuOpen = openMenuId === subboard._id
-
-                          return (
-                            <div
-                              key={subboard._id}
-                              className={`relative group ${isSubboardMenuOpen ? 'z-50' : 'z-0'}`}
-                              
-                              onDragOver={(e) => {
-                                e.preventDefault()
-                                setDragOverId(subboard._id)
-                              }}
-
-                              onDragLeave={() => {
-                                setDragOverId(null)
-                              }}
-
-                              onDrop={async (e) => {
-                                e.preventDefault()
-                                setDragOverId(null)
-
-                                const adId = e.dataTransfer.getData('adId')
-                                if (!adId) return
-
-                                try {
-                                  await fetch(`/api/ads/${adId}`, {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                      boardId: subboard._id,
-                                    }),
-                                  })
-
-                                  // 🔥 optional: auto switch to that board
-                                  setSelectedBoardId(subboard._id)
-
-                                } catch (err) {
-                                  console.error('Move failed', err)
-                                }
-                              }}
-                            >   
-                         <div
-                                  className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 transition-all duration-150
-                                    ${
-                                      dragOverId === subboard._id
-                                        ? 'bg-primary/20 ring-2 ring-primary scale-[1.02]'
-                                        : ''
-                                    }
-                                  `}
-                                  style={{
-                                    backgroundColor: isSelected
-                                      ? 'rgb(101, 84, 192)'
-                                      : dragOverId === subboard._id
-                                      ? 'rgba(101, 84, 192, 0.15)'
-                                      : 'transparent',
-                                    color: isSelected ? 'white' : 'rgb(113, 113, 122)',
-                                    fontWeight: isSelected ? '600' : '500',
-                                  }}
-                                >
-                                <button
-                                  onClick={() => {
-                                    setSelectedBoardId(subboard._id)
-                                    setOpenMenuId(null)
-                                  }}
-                                  className="flex min-w-0 flex-1 items-center gap-2.5 cursor-pointer"
-                                  type="button"
-                                >
-                                  <Folder className="h-3 w-3 flex-shrink-0 lg:h-3.5 lg:w-3.5" />
-                                  <span className="truncate">{subboard.name}</span>
-                                </button>
-
-                                <button
-                                  ref={isSubboardMenuOpen ? menuButtonRef : null}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setOpenMenuId((prev) =>
-                                      prev === subboard._id ? null : subboard._id
-                                    )
-                                  }}
-                                  className="rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-black/10 cursor-pointer"
-                                  title="Subboard actions"
-                                  type="button"
-                                >
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-
-                              {isSubboardMenuOpen && (
-                                <div
-                                  ref={isSubboardMenuOpen ? menuRef : null}
-                                  className="absolute right-2 top-full mt-1 min-w-[170px] rounded-xl border border-border bg-card shadow-lg z-[999] overflow-hidden"
-                                >
-                                  <button
-                                    onClick={() =>
-                                      setRenameTarget({
-                                        _id: subboard._id,
-                                        name: subboard.name,
-                                        parentBoardId: subboard.parentBoardId,
-                                        type: 'subboard',
-                                      })
-                                    }
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted first:rounded-t-xl last:rounded-b-xl cursor-pointer">                          
-                                    <Pencil className="h-4 w-4" />
-                                    Rename
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      setMoveTarget({
-                                        _id: subboard._id,
-                                        name: subboard.name,
-                                        parentBoardId: subboard.parentBoardId,
-                                        type: 'subboard',
-                                      })
-                                    }
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted first:rounded-t-xl last:rounded-b-xl cursor-pointer">                          
-                                    <ArrowRightLeft className="h-4 w-4" />
-                                    Move
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      setDeleteTarget({
-                                        _id: subboard._id,
-                                        name: subboard.name,
-                                        parentBoardId: subboard.parentBoardId,
-                                        type: 'subboard',
-                                      })
-                                    }
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm  text-red-500 hover:bg-muted first:rounded-t-xl last:rounded-b-xl cursor-pointer"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    Delete
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+              {filteredCollections.map((collection) => renderBoardTree(collection as FlatBoard, 0))}
             </div>
           )}
         </div>
@@ -517,9 +590,9 @@ export default function Sidebar() {
           setForcedParentId(null)
         }}
         onCreateCollection={handleCreateCollection}
-        parentBoards={topLevelBoards.map((board) => ({
+        parentBoards={allBoards.map((board) => ({
           _id: board._id,
-          name: board.name,
+          name: `${'— '.repeat(getBoardDepth(board._id))}${board.name}`,
         }))}
         defaultParentBoardId={forcedParentId}
       />
@@ -543,12 +616,14 @@ export default function Sidebar() {
         onClose={() => setMoveTarget(null)}
         boardName={moveTarget?.name || ''}
         currentParentBoardId={moveTarget?.parentBoardId || null}
-        parentBoards={topLevelBoards.map((board) => ({
-          _id: board._id,
-          name: board.name,
-        }))}
+        parentBoards={getMoveParentOptions.filter((board) => {
+          if (!moveTarget) return true
+          if (board._id === moveTarget._id) return false
+          if (isDescendantOf(board._id, moveTarget._id)) return false
+          return true
+        })}
         onSubmit={(nextParentId) =>
-          moveTarget ? handleMoveSubboard(moveTarget._id, nextParentId) : Promise.resolve()
+          moveTarget ? handleMoveBoard(moveTarget._id, nextParentId) : Promise.resolve()
         }
       />
 
@@ -558,14 +633,10 @@ export default function Sidebar() {
         boardName={deleteTarget?.name || ''}
         title={
           deleteTarget?.type === 'parent'
-            ? 'Delete Collection'
+            ? 'Delete Board'
             : 'Delete Subboard'
         }
-        description={
-          deleteTarget?.type === 'parent'
-            ? 'This will delete the collection, all subboards inside it, and all ads inside those subboards.'
-            : 'This will delete the subboard and all ads inside it.'
-        }
+        description="This will delete the selected board, all nested boards inside it, and any ads saved in them."
         onConfirm={() =>
           deleteTarget ? handleDeleteBoard(deleteTarget._id) : Promise.resolve()
         }

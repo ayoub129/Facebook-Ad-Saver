@@ -106,20 +106,28 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
   const subboardsOnly = useMemo<SubboardOption[]>(() => {
     const boardMap = new Map(boards.map((board) => [board._id, board]))
-
+  
+    const buildFullName = (boardId: string) => {
+      const parts: string[] = []
+      let current = boardMap.get(boardId)
+  
+      while (current) {
+        parts.unshift(current.name)
+        current = current.parentBoardId ? boardMap.get(current.parentBoardId) : undefined
+      }
+  
+      return parts.join(' / ')
+    }
+  
     return boards
       .filter((board) => Boolean(board.parentBoardId))
-      .map((board) => {
-        const parent = board.parentBoardId ? boardMap.get(board.parentBoardId) : null
-
-        return {
-          id: board._id,
-          name: board.name,
-          fullName: parent ? `${parent.name} / ${board.name}` : board.name,
-        }
-      })
+      .map((board) => ({
+        id: board._id,
+        name: board.name,
+        fullName: buildFullName(board._id),
+      }))
   }, [boards])
-
+    
   const brand = ad?.advertiserName || 'Unknown advertiser'
   const logoImage = ad?.images?.[0] || ''
   const videoUrl = ad?.videos?.[0] || ''
@@ -444,28 +452,28 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
   const handleSaveToBoard = async (boardId: string, boardName: string) => {
     if (!ad) return
-
+  
     try {
       setIsSavingBoard(true)
-
-      const nextBoardIds = Array.from(new Set([...(ad.boardIds || []), boardId]))
-
+  
       const res = await fetch(`/api/ads/${ad._id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          boardIds: nextBoardIds,
+          boardId,
         }),
       })
-
+  
       const data = await res.json()
-
+  
       if (!res.ok || !data?.success) {
         throw new Error(data?.message || 'Failed to save ad to board')
       }
-
+  
+      const nextBoardIds = Array.from(new Set([...(ad.boardIds || []), boardId]))
+  
       setAd((prev) => (prev ? { ...prev, boardIds: nextBoardIds } : prev))
       setSelectedBoard(boardName)
       setShowBoardDropdown(false)
@@ -497,8 +505,8 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <div className="border-b border-border bg-primary px-6 py-4 text-primary-foreground">
+      <div className="flex h-screen flex-col bg-[#1d143b] text-white">
+      <div className="border-b border-white/10 bg-gradient-to-r from-[#4f2bd6] to-[#6c3cf0] px-6 py-4 text-white">
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-4">
             <button
@@ -548,11 +556,11 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
               <div className="border-t border-white/15" />
 
-              {(domainText || ad.headline || ad.description) && (
+              {(ad.domain || ad.headline || ad.description) && (
                 <div className="space-y-3">
-                  {domainText && (
-                    <p className="text-[14px] font-extrabold uppercase tracking-wide text-white">
-                      {domainText}
+                  {ad.domain && (
+                    <p className="text-[14px] font-extrabold uppercase tracking-wide text-white/75">
+                      {ad.domain}
                     </p>
                   )}
 
@@ -580,7 +588,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                   </span>
                 </div>
 
-                <a href={ad.domain} className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1d143b] shadow-sm">
+                <a href={ad.ctaUrl} className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1d143b] shadow-sm">
                   {ad.ctaText || 'N/A'}
                 </a>
 
@@ -592,7 +600,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
           </div>
         </div>
 
-        <div className="flex flex-1 justify-center overflow-y-auto border-r border-border bg-black px-6 py-6">
+        <div className="flex flex-1 justify-center overflow-y-auto border-r border-white/10 bg-[#120c2b] px-6 py-6">
           <div className="relative flex w-full max-w-md items-start justify-center">
             <div
               className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl"
@@ -765,22 +773,22 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
           </div>
         </div>
 
-        <div className="w-[26%] overflow-y-auto bg-card p-6">
-          <div className="space-y-6">
+        <div className="w-[26%] overflow-y-auto bg-[#1d143b] p-6 text-white border-l border-white/10">
+            <div className="space-y-6">
             <div>
-              <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">
+              <p className="text-white mb-3 text-xs font-semibold uppercase text-muted-foreground">
                 Saved In
               </p>
 
-              <Card className="border-border/50 bg-muted/50 p-3">
-                <p className="text-sm font-semibold text-foreground">
+              <Card className="border-white/10 bg-white/5 p-3 backdrop-blur-sm">
+                <p className="text-sm font-semibold text-foreground text-white">
                   {linkedBoardNames.length ? linkedBoardNames.join(', ') : 'N/A'}
                 </p>
               </Card>
             </div>
 
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
+              <p className="mb-2 text-white text-xs font-semibold uppercase text-muted-foreground">
                 Save to Board
               </p>
 
@@ -801,14 +809,14 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                         <button
                           key={board.id}
                           onClick={() => handleSaveToBoard(board.id, board.fullName)}
-                          className="w-full cursor-pointer px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+                          className="w-full cursor-pointer px-3 py-2 text-left text-sm text-[#120c2b] transition-colors hover:bg-muted"
                           type="button"
                         >
                           {board.fullName}
                         </button>
                       ))
                     ) : (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                      <div className="px-3 py-2 text-sm text-[#120c2b]">
                         No subboards found
                       </div>
                     )}
@@ -818,15 +826,15 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
             </div>
 
             <div>
-              <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">
+              <p className="mb-3 text-xs font-semibold uppercase text-white">
                 Actions
               </p>
 
               <div className="grid grid-cols-2 gap-2">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="flex h-20 cursor-pointer flex-col items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={  !hasVideo || isCopyingScript ? " flex h-20 flex-col items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 " : "cursor-pointer flex h-20 flex-col items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 "   }   
                   onClick={handleCopyScript}
                   disabled={!hasVideo || isCopyingScript}
                 >
@@ -837,9 +845,9 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                 </Button>
 
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="flex h-20 cursor-pointer flex-col items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={isDownloadingMedia ? " flex h-20 flex-col items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10"  : "cursor-pointer flex h-20 flex-col items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10"}
                   onClick={handleDownloadMedia}
                   disabled={isDownloadingMedia}
                 >
@@ -850,9 +858,9 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                 </Button>
 
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  className="flex h-20 cursor-pointer flex-col items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={!hasVideo || !previewImage ? "flex h-20 flex-col items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10" : "cursor-pointer flex h-20 flex-col items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10"}
                   onClick={handleDownloadThumbnail}
                   disabled={!hasVideo || !previewImage}
                 >
@@ -862,9 +870,9 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
                 {ad.ctaUrl ? (
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="flex h-20 cursor-pointer flex-col items-center justify-center gap-2"
+                    className="flex h-20 flex-col items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10"
                     asChild
                   >
                     <a href={ad.ctaUrl} target="_blank" rel="noreferrer">
@@ -874,10 +882,9 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                   </Button>
                 ) : (
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="flex h-20 cursor-not-allowed flex-col items-center justify-center gap-2 opacity-50"
-                    disabled
+                    className="flex h-20 flex-col items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10"                    disabled
                   >
                     <Eye className="h-5 w-5" />
                     <span className="text-xs">View Landing Page</span>
@@ -887,12 +894,11 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
             </div>
 
             <div>
-              <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">
+              <p className="mb-3 text-xs font-semibold uppercase text-white">
                 Status
               </p>
 
-              <Card className="border-border/50 bg-muted/50 p-3">
-                <p className="mb-1 text-xs text-muted-foreground">Status</p>
+              <Card className="border-white/10 bg-white/5 p-3 backdrop-blur-sm">
                 <p className="text-sm font-semibold text-emerald-500">
                   {ad.status || 'N/A'}
                 </p>

@@ -10,6 +10,7 @@ function normalizeAd(ad: any) {
       : [],
     advertiserName: ad.advertiserName || "",
     adLibraryId: ad.adLibraryId || "",
+    domain: ad.domain || "",
     adCopy: ad.adCopy || "",
     headline: ad.headline || "",
     description: ad.description || "",

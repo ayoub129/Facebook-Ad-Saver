@@ -7,6 +7,7 @@ function normalizeBoard(board: any) {
     _id: board._id?.toString(),
     name: board.name ?? "",
     slug: board.slug ?? "",
+    source: board.source || "app",
     parentBoardId: board.parentBoardId ? board.parentBoardId.toString() : null,
     order: typeof board.order === "number" ? board.order : 0,
     createdAt: board.createdAt ? new Date(board.createdAt).toISOString() : null,
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
       slug,
       parentBoardId,
       order,
+      source: body.source || "app",
     })
 
     return NextResponse.json({

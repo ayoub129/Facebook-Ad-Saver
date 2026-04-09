@@ -7,6 +7,7 @@ export interface IBoard {
   order: number;
   createdAt?: Date;
   updatedAt?: Date;
+  source: string;
 }
 
 const BoardSchema = new Schema<IBoard>(
@@ -30,6 +31,11 @@ const BoardSchema = new Schema<IBoard>(
       type: Number,
       default: 0,
     },
+    source:{
+      type: String,
+      default: 'app'
+    } 
+
   },
   {
     timestamps: true,
