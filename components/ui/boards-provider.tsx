@@ -10,6 +10,7 @@ export type Board = {
   order: number
   createdAt?: string
   updatedAt?: string
+  source: string
 }
 
 type CreateBoardInput = {

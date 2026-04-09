@@ -20,6 +20,10 @@ export default function Home() {
     return Boolean(selectedBoard && !selectedBoard.parentBoardId)
   }, [selectedBoard])
 
+  const isAdLibraryBoard = useMemo(() => {
+    return selectedBoard?.source === 'ad-library'
+  }, [selectedBoard])
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.replace('/login?callbackUrl=/')
@@ -51,7 +55,7 @@ export default function Home() {
     <div className="flex h-screen w-screen overflow-hidden bg-background">
       <Sidebar />
 
-      {isParentBoard && selectedBoardId ? (
+      {isParentBoard && selectedBoardId && !isAdLibraryBoard ? (
         <BoardOverview
           parentBoardId={selectedBoardId}
           onOpenSubboard={(subboardId) => setSelectedBoardId(subboardId)}
