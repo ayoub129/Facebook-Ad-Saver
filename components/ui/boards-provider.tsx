@@ -1,6 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { useSession } from 'next-auth/react'
 
 export type Board = {
   _id: string
@@ -170,9 +171,14 @@ export function BoardsProvider({ children }: { children: React.ReactNode }) {
     return result.board as Board
   }
 
+  const { status } = useSession()
   useEffect(() => {
-    refreshBoards()
-  }, [])
+    if (status === 'authenticated') {
+      refreshBoards()
+    }
+  }, [status])
+  
+
 
   const selectedBoard = useMemo(() => {
     return boards.find((board) => board._id === selectedBoardId) || null
