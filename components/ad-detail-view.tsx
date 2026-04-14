@@ -27,14 +27,14 @@ interface AdDetailViewProps {
   onBack: () => void
 }
 
-type SubboardOption = {
+type BoardOption = {
   id: string
   name: string
   fullName: string
 }
 
 export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
-  const { boards } = useBoards()
+  const { boards, refreshBoards } = useBoards()
 
   const [ad, setAd] = useState<DashboardAd | null>(null)
   const [loading, setLoading] = useState(true)
@@ -43,7 +43,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   const [selectedBoard, setSelectedBoard] = useState('')
   const [showBoardDropdown, setShowBoardDropdown] = useState(false)
 
-  const [isMuted, setIsMuted] = useState(true)
+  const [isMuted, setIsMuted] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -79,6 +79,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
       try {
         setLoading(true)
         setError(null)
+        setVideoError(false)
 
         const res = await fetch(`/api/ads/${adId}`, {
           method: 'GET',
@@ -104,7 +105,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
     fetchAd()
   }, [adId])
 
-  const subboardsOnly = useMemo<SubboardOption[]>(() => {
+  const boardOptions = useMemo<BoardOption[]>(() => {
     const boardMap = new Map(boards.map((board) => [board._id, board]))
   
     const buildFullName = (boardId: string) => {
@@ -120,12 +121,12 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
     }
   
     return boards
-      .filter((board) => Boolean(board.parentBoardId))
       .map((board) => ({
         id: board._id,
         name: board.name,
         fullName: buildFullName(board._id),
       }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName))
   }, [boards])
     
   const brand = ad?.advertiserName || 'Unknown advertiser'
@@ -450,6 +451,9 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
     }
   }
 
+  // Refresh-media logic intentionally disabled for now.
+  // const refreshMedia = async (reason: 'auto' | 'manual') => { ... }
+
   const handleSaveToBoard = async (boardId: string, boardName: string) => {
     if (!ad) return
   
@@ -718,6 +722,9 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                     src={previewImage}
                     alt={brand}
                     className="h-full w-full bg-black object-contain"
+                    onError={() => {
+                      // refresh-media logic intentionally disabled for now
+                    }}
                   />
 
                   {hasImageSlider && (
@@ -793,18 +800,27 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
               <div className="relative">
                 <button
-                  onClick={() => setShowBoardDropdown((prev) => !prev)}
+                  onClick={async () => {
+                    if (!showBoardDropdown) {
+                      try {
+                        await refreshBoards()
+                      } catch (error) {
+                        console.error('Failed to refresh boards:', error)
+                      }
+                    }
+                    setShowBoardDropdown((prev) => !prev)
+                  }}
                   className="w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                   type="button"
                   disabled={isSavingBoard}
                 >
-                  {isSavingBoard ? 'Saving...' : selectedBoard || 'Select subboard...'}
+                  {isSavingBoard ? 'Saving...' : selectedBoard || 'Select board...'}
                 </button>
 
                 {showBoardDropdown && (
                   <div className="absolute left-0 right-0 top-full z-10 mt-2 max-h-56 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-                    {subboardsOnly.length > 0 ? (
-                      subboardsOnly.map((board) => (
+                    {boardOptions.length > 0 ? (
+                      boardOptions.map((board) => (
                         <button
                           key={board.id}
                           onClick={() => handleSaveToBoard(board.id, board.fullName)}
@@ -816,7 +832,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                       ))
                     ) : (
                       <div className="px-3 py-2 text-sm text-[#120c2b]">
-                        No subboards found
+                        No boards found
                       </div>
                     )}
                   </div>
@@ -901,6 +917,11 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                 <p className="text-sm font-semibold text-emerald-500">
                   {ad.status || 'N/A'}
                 </p>
+                {ad.refreshStatus === 'failed' && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    {ad.refreshError || 'Media expired. Re-open in Facebook Ad Library and save again.'}
+                  </p>
+                )}
               </Card>
             </div>
           </div>

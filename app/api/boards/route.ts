@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     await connectToDatabase()
 
     const boards = await Board.find({ userId })
-      .sort({ order: 1, createdAt: -1 })
+      .sort({ order: 1, createdAt: 1 })
       .lean()
 
     return NextResponse.json({ success: true, boards: boards.map(normalizeBoard) })

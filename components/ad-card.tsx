@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { MoreHorizontal, Play, Pause, Volume2, VolumeX, Maximize, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Play, Pause, Volume2, VolumeX, Maximize, Trash2, MoveRight } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 
 export type DashboardAd = {
@@ -22,6 +22,11 @@ export type DashboardAd = {
   images: string[]
   videos: string[]
   thumbnailUrl: string
+  imageCandidates?: string[]
+  videoCandidates?: string[]
+  refreshStatus?: 'idle' | 'ok' | 'failed'
+  refreshError?: string
+  lastRefreshedAt?: string | null
   rawHtml?: string
   rawPayload?: any
   createdAt?: string | null
@@ -35,6 +40,7 @@ interface AdCardProps {
   onVideoPause?: () => void
   onClick?: () => void
   onDelete?: (adId: string) => void
+  onMove?: (adId: string) => void
 }
 
 export default function AdCard({
@@ -43,28 +49,73 @@ export default function AdCard({
   onVideoPlay,
   onVideoPause,
   onClick,
-  onDelete
+  onDelete,
+  onMove
 }: AdCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [localAd, setLocalAd] = useState<DashboardAd>(ad)
   const [isHovering, setIsHovering] = useState(false)
-  const [isMuted, setIsMuted] = useState(true)
+  const [isMuted, setIsMuted] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
   const [localIsPlaying, setLocalIsPlaying] = useState(false)
   const [mediaAspectRatio, setMediaAspectRatio] = useState<number>(4 / 5)
   const [showMenu, setShowMenu] = useState(false)
+  const [videoCandidateIndex, setVideoCandidateIndex] = useState(0)
+  const [imageCandidateIndex, setImageCandidateIndex] = useState(0)
 
-  const brand = ad.advertiserName || 'Unknown advertiser'
+  useEffect(() => {
+    setLocalAd(ad)
+    setVideoCandidateIndex(0)
+    setImageCandidateIndex(0)
+  }, [ad])
 
-  const logoImage = ad.images?.[0] || ''
-  const mainImage = ad.images?.[1] || ''
-  const videoUrl = ad.videos?.[0] || ''
-  const hasVideo = Boolean(videoUrl)
+  const brand = localAd.advertiserName || 'Unknown advertiser'
+  const logoImage = localAd.images?.[0] || ''
+
+  const videoCandidates = useMemo(() => {
+    const seen = new Set<string>()
+    const result: string[] = []
+    const pools = [
+      localAd.videos?.[0],
+      ...(localAd.videoCandidates || []),
+      ...(localAd.videos || []),
+    ]
+    for (const candidate of pools) {
+      const value = typeof candidate === 'string' ? candidate.trim() : ''
+      if (!value || seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+    return result
+  }, [localAd.videoCandidates, localAd.videos])
+
+  const imageCandidates = useMemo(() => {
+    const seen = new Set<string>()
+    const result: string[] = []
+    const pools = [
+      localAd.images?.[1],
+      localAd.thumbnailUrl,
+      ...(localAd.imageCandidates || []),
+      ...(localAd.images?.slice(1) || []),
+    ]
+    for (const candidate of pools) {
+      const value = typeof candidate === 'string' ? candidate.trim() : ''
+      if (!value || seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+    return result
+  }, [localAd.imageCandidates, localAd.images, localAd.thumbnailUrl])
+
+  const currentVideoUrl = videoCandidates[videoCandidateIndex] || ''
+  const currentImageUrl = imageCandidates[imageCandidateIndex] || ''
+  const hasVideo = Boolean(currentVideoUrl)
 
   const previewImage = hasVideo
-    ? ad.thumbnailUrl || mainImage || ''
-    : mainImage || ''
+    ? localAd.thumbnailUrl || currentImageUrl || ''
+    : currentImageUrl || ''
 
   const brandFallback = brand.charAt(0)?.toUpperCase() || 'A'
 
@@ -76,7 +127,10 @@ export default function AdCard({
     const now = Date.now()
     const diff = now - created
     return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)))
-  }, [ad.createdAt])
+  }, [localAd.createdAt])
+
+  // Refresh-media API fallback is intentionally disabled for now.
+  // const tryServerRefresh = async () => { ... }
 
   const formatTime = (seconds: number) => {
     if (!seconds || Number.isNaN(seconds)) return '0:00'
@@ -159,7 +213,7 @@ export default function AdCard({
       onMouseEnter={() => setIsHovering(true)}
       draggable
       onDragStart={(e) => {
-        e.dataTransfer.setData('adId', ad._id)
+        e.dataTransfer.setData('adId', localAd._id)
       
         setIsDragging(true)
       
@@ -229,14 +283,25 @@ export default function AdCard({
           </button>
 
           {showMenu && (
-            <div className="absolute right-0 top-full z-20 mt-2 min-w-[140px] rounded-xl border border-border bg-card shadow-lg">
+            <div className="absolute right-0 top-full z-20 mt-2 min-w-[168px] overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-xl backdrop-blur">
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   setShowMenu(false)
-                  onDelete?.(ad._id)
+                  onMove?.(localAd._id)
                 }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm  text-red-500 hover:bg-muted first:rounded-t-xl last:rounded-b-xl cursor-pointer"
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted cursor-pointer"
+              >
+                <MoveRight className="h-4 w-4" />
+                Move to board
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowMenu(false)
+                  onDelete?.(localAd._id)
+                }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-muted cursor-pointer"
                 >
                 <Trash2 className="h-4 w-4" />
                 Delete ad
@@ -255,7 +320,7 @@ export default function AdCard({
         {hasVideo ? (
           <video
             ref={videoRef}
-            src={videoUrl}
+            src={currentVideoUrl}
             className="w-full h-full object-contain bg-black"
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
@@ -266,6 +331,14 @@ export default function AdCard({
             poster={previewImage}
             muted={isMuted}
             preload="metadata"
+            onError={() => {
+              const nextIndex = videoCandidateIndex + 1
+              if (nextIndex < videoCandidates.length) {
+                setVideoCandidateIndex(nextIndex)
+                return
+              }
+              // refresh-media logic intentionally disabled for now
+            }}
           />
         ) : previewImage ? (
           <img
@@ -274,6 +347,14 @@ export default function AdCard({
             className="w-full h-full object-contain bg-muted"
             loading="lazy"
             draggable={false}
+            onError={() => {
+              const nextIndex = imageCandidateIndex + 1
+              if (nextIndex < imageCandidates.length) {
+                setImageCandidateIndex(nextIndex)
+                return
+              }
+              // refresh-media logic intentionally disabled for now
+            }}
           />
         ) : (
           <div className="w-full h-full min-h-[260px] flex items-center justify-center text-sm text-muted-foreground">
@@ -312,11 +393,7 @@ export default function AdCard({
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={(e) => {
-                    e.stopPropagation()
-                    if (videoRef.current) {
-                      videoRef.current[localIsPlaying ? 'pause' : 'play']()
-                      setLocalIsPlaying(!localIsPlaying)
-                    }
+                    void handlePlay(e)
                   }}
                   className="hover:bg-white/20 p-1.5 rounded transition-colors cursor-pointer"
                 >

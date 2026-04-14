@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input'
 import AdCard, { type DashboardAd } from './ad-card'
 import { useBoards } from '@/components/ui/boards-provider'
 import DeleteBoardModal from '@/components/delete-board-modal'
+import MoveAdModal from '@/components/move-ad-modal'
+import { Card } from '@/components/ui/card'
 
 interface AdGridProps {
   onAdClick: (adId: string) => void
@@ -18,6 +20,9 @@ type BreadcrumbItem = {
 }
 
 type AdItem = DashboardAd
+type GridItem =
+  | { type: 'subboard'; id: string; name: string }
+  | { type: 'ad'; id: string; ad: AdItem }
 
 export default function AdGrid({ onAdClick }: AdGridProps) {
   const {
@@ -34,9 +39,10 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
   const [showSortMenu, setShowSortMenu] = useState(false)
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
-  const [columns, setColumns] = useState<DashboardAd[][]>([])
   const [deleteTarget, setDeleteTarget] = useState<AdItem | null>(null)
+  const [moveTarget, setMoveTarget] = useState<AdItem | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [subboardPreviewAds, setSubboardPreviewAds] = useState<Record<string, AdItem[]>>({})
 
   // 🔥 NEW
   const [columnsCount, setColumnsCount] = useState(4)
@@ -45,6 +51,12 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     const ad = ads.find((item) => item._id === adId)
     if (!ad) return
     setDeleteTarget(ad)
+  }
+
+  const handleMoveAd = (adId: string) => {
+    const ad = ads.find((item) => item._id === adId)
+    if (!ad) return
+    setMoveTarget(ad)
   }
 
   const confirmDeleteAd = async () => {
@@ -70,6 +82,28 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     }
   }
 
+  const confirmMoveAd = async (boardId: string) => {
+    if (!moveTarget) return
+
+    const res = await fetch(`/api/ads/${moveTarget._id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        boardId,
+      }),
+    })
+
+    const data = await res.json()
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.message || 'Failed to move ad')
+    }
+
+    setAds((prev) => prev.filter((ad) => ad._id !== moveTarget._id))
+    setMoveTarget(null)
+  }
+
   const handleSignOut = async () => {
     try {
       setIsSigningOut(true)
@@ -86,7 +120,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
   useEffect(() => {
     const fetchAds = async () => {
       try {
-        if (!selectedBoardId || !selectedBoard || !selectedBoard.parentBoardId) {
+        if (!selectedBoardId || !selectedBoard) {
           setAds([])
           return
         }
@@ -179,16 +213,66 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     return nextAds
   }, [ads, searchTerm, sortBy])
 
-  // 🔥 UPDATED: dynamic columns
+  const childBoards = useMemo(() => {
+    if (!selectedBoardId) return []
+    return boards
+      .filter((board) => board.parentBoardId === selectedBoardId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  }, [boards, selectedBoardId])
+
   useEffect(() => {
-    const cols: DashboardAd[][] = Array.from({ length: columnsCount }, () => [])
+    const loadSubboardPreviews = async () => {
+      if (!childBoards.length) {
+        setSubboardPreviewAds({})
+        return
+      }
 
-    filteredAds.forEach((ad, index) => {
-      cols[index % columnsCount].push(ad)
+      try {
+        const entries = await Promise.all(
+          childBoards.map(async (board) => {
+            const res = await fetch(`/api/ads?boardId=${encodeURIComponent(board._id)}`, {
+              method: 'GET',
+              cache: 'no-store',
+            })
+
+            if (!res.ok) return [board._id, []] as const
+            const data = await res.json()
+            const boardAds = Array.isArray(data?.ads) ? (data.ads as AdItem[]) : []
+            return [board._id, boardAds] as const
+          })
+        )
+
+        setSubboardPreviewAds(Object.fromEntries(entries))
+      } catch (error) {
+        console.error('Failed to load subboard previews:', error)
+        setSubboardPreviewAds({})
+      }
+    }
+
+    loadSubboardPreviews()
+  }, [childBoards])
+
+  const gridItems = useMemo<GridItem[]>(() => {
+    const subboardItems = childBoards.map((board) => ({
+      type: 'subboard' as const,
+      id: board._id,
+      name: board.name,
+    }))
+    const adItems = filteredAds.map((ad) => ({
+      type: 'ad' as const,
+      id: ad._id,
+      ad,
+    }))
+    return [...subboardItems, ...adItems]
+  }, [childBoards, filteredAds])
+
+  const columns = useMemo(() => {
+    const cols: GridItem[][] = Array.from({ length: columnsCount }, () => [])
+    gridItems.forEach((item, index) => {
+      cols[index % columnsCount].push(item)
     })
-
-    setColumns(cols)
-  }, [filteredAds, columnsCount])
+    return cols
+  }, [gridItems, columnsCount])
 
   const handleVideoPlay = (id: string) => {
     setPlayingVideoId(id)
@@ -336,25 +420,68 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
             <div className="flex h-full items-center justify-center text-muted-foreground">
               Loading ads...
             </div>
-          ) : filteredAds.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
+          ) : gridItems.length === 0 ? (
+            <div className="flex min-h-[260px] items-center justify-center text-muted-foreground">
               No ads yet
             </div>
           ) : (
             <div className="flex gap-5 w-full">
               {columns.map((col, colIndex) => (
                 <div key={colIndex} className="flex flex-col gap-5 flex-1">
-                  {col.map((ad) => (
-                    <AdCard
-                      key={ad._id}
-                      ad={ad}
-                      isPlaying={playingVideoId === ad._id}
-                      onVideoPlay={() => handleVideoPlay(ad._id)}
-                      onVideoPause={handleVideoPause}
-                      onClick={() => onAdClick(ad._id)}
-                      onDelete={handleDeleteAd}
-                    />
-                  ))}
+                  {col.map((item) =>
+                    item.type === 'ad' ? (
+                      <AdCard
+                        key={item.id}
+                        ad={item.ad}
+                        isPlaying={playingVideoId === item.id}
+                        onVideoPlay={() => handleVideoPlay(item.id)}
+                        onVideoPause={handleVideoPause}
+                        onClick={() => onAdClick(item.id)}
+                        onDelete={handleDeleteAd}
+                        onMove={handleMoveAd}
+                      />
+                    ) : (
+                      <Card
+                        key={item.id}
+                        className="overflow-hidden hover:shadow-xl transition-all duration-300 bg-card border-border cursor-pointer break-inside-avoid"
+                        onClick={() => setSelectedBoardId(item.id)}
+                      >
+                        <div className="p-3 border-b border-border/50 bg-card/50">
+                          <div className="text-sm font-semibold text-foreground truncate">{item.name}</div>
+                          <div className="text-xs text-muted-foreground">Subboard</div>
+                        </div>
+                        <div className="p-3 bg-muted/40">
+                          <div className="grid grid-cols-3 gap-2">
+                            {(subboardPreviewAds[item.id] || []).slice(0, 3).length > 0 ? (
+                              (subboardPreviewAds[item.id] || []).slice(0, 3).map((ad) => {
+                                const preview = ad.videos?.[0]
+                                  ? ad.thumbnailUrl || ad.images?.[1] || ad.images?.[0] || ''
+                                  : ad.images?.[1] || ad.images?.[0] || ''
+
+                                return (
+                                  <div key={ad._id} className="aspect-[2/3] overflow-hidden rounded-lg bg-muted">
+                                    {preview ? (
+                                      <img
+                                        src={preview}
+                                        alt={ad.advertiserName}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                                        No preview
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })
+                            ) : (
+                              <div className="col-span-3 text-sm text-muted-foreground">No ads yet</div>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    )
+                  )}
                 </div>
               ))}
             </div>
@@ -369,6 +496,15 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
         boardName={deleteTarget?.advertiserName || 'this ad'}
         title="Delete Ad"
         description="This will permanently delete this ad."
+      />
+
+      <MoveAdModal
+        isOpen={Boolean(moveTarget)}
+        onClose={() => setMoveTarget(null)}
+        onSubmit={confirmMoveAd}
+        boards={boards}
+        adName={moveTarget?.advertiserName || 'this'}
+        currentBoardId={moveTarget?.boardIds?.[0] || null}
       />
     </>
   )

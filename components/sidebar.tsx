@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import CreateCollectionModal from '@/components/create-collection-modal'
+import CreateBoardModal from '@/components/create-collection-modal'
 import RenameBoardModal from '@/components/rename-board-modal'
 import MoveBoardModal from '@/components/move-board-modal'
 import DeleteBoardModal from '@/components/delete-board-modal'
@@ -42,6 +42,8 @@ type FlatBoard = {
   name: string
   parentBoardId: string | null
   order?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 type DragItem =
@@ -58,6 +60,7 @@ export default function Sidebar() {
     updateBoard,
     deleteBoard,
     moveBoard,
+    refreshBoards,
     loading,
   } = useBoards()
 
@@ -72,7 +75,7 @@ export default function Sidebar() {
   const [deleteTarget, setDeleteTarget] = useState<BoardActionTarget | null>(null)
 
   const [dragOverId, setDragOverId] = useState<string | null>(null)
-  const [dragOverPosition, setDragOverPosition] = useState<'inside' | null>(null)
+  const [dragOverPosition, setDragOverPosition] = useState<'before' | 'inside' | 'after' | 'root' | null>(null)
   const [draggingBoardId, setDraggingBoardId] = useState<string | null>(null)
 
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -178,7 +181,7 @@ export default function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openMenuId])
 
-  const handleCreateCollection = async (data: {
+  const handleCreateBoard = async (data: {
     name: string
     parentBoardId: string | null
   }) => {
@@ -248,10 +251,11 @@ export default function Sidebar() {
     return children.some((child) => matchesSearch(child, term))
   }
 
-  const filteredCollections = useMemo(() => {
+  const filteredBoards = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
-    if (!term) return topLevelBoards as FlatBoard[]
-    return (topLevelBoards as FlatBoard[]).filter((board) => matchesSearch(board, term))
+    const top = topLevelBoards as FlatBoard[]
+    if (!term) return top
+    return top.filter((board) => matchesSearch(board, term))
   }, [topLevelBoards, searchTerm])
 
   const getMoveParentOptions = useMemo(() => {
@@ -291,6 +295,63 @@ export default function Sidebar() {
     return null
   }
 
+  const getSiblingBoards = (parentId: string | null): FlatBoard[] => {
+    return parentId ? (getSubboards(parentId) as FlatBoard[]) : (topLevelBoards as FlatBoard[])
+  }
+
+  const persistBoardOrder = async (boards: FlatBoard[], parentId: string | null) => {
+    await Promise.all(
+      boards.map((board, index) =>
+        fetch(`/api/boards/${board._id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            parentBoardId: parentId,
+            order: index,
+          }),
+        })
+      )
+    )
+    await refreshBoards()
+  }
+
+  const moveBoardByDrop = async (
+    draggedBoardId: string,
+    targetBoardId: string | null,
+    position: 'before' | 'inside' | 'after' | 'root'
+  ) => {
+    if (targetBoardId && draggedBoardId === targetBoardId) return
+    if (targetBoardId && isDescendantOf(targetBoardId, draggedBoardId)) return
+
+    const draggedBoard = boardMap.get(draggedBoardId)
+    if (!draggedBoard) return
+
+    if (position === 'root' || !targetBoardId) {
+      const siblings = getSiblingBoards(null).filter((b) => b._id !== draggedBoardId)
+      siblings.push({ ...draggedBoard, parentBoardId: null })
+      await persistBoardOrder(siblings, null)
+      return
+    }
+
+    const targetBoard = boardMap.get(targetBoardId)
+    if (!targetBoard) return
+
+    if (position === 'inside') {
+      const children = getSiblingBoards(targetBoardId).filter((b) => b._id !== draggedBoardId)
+      children.push({ ...draggedBoard, parentBoardId: targetBoardId })
+      await persistBoardOrder(children, targetBoardId)
+      setExpandedBoardIds((prev) => (prev.includes(targetBoardId) ? prev : [...prev, targetBoardId]))
+      return
+    }
+
+    const destinationParentId = targetBoard.parentBoardId || null
+    const siblings = getSiblingBoards(destinationParentId).filter((b) => b._id !== draggedBoardId)
+    const targetIndex = siblings.findIndex((b) => b._id === targetBoardId)
+    const insertAt = position === 'before' ? targetIndex : targetIndex + 1
+    siblings.splice(insertAt, 0, { ...draggedBoard, parentBoardId: destinationParentId })
+    await persistBoardOrder(siblings, destinationParentId)
+  }
+
   const handleDropOnBoard = async (e: React.DragEvent, targetBoard: FlatBoard) => {
     e.preventDefault()
     e.stopPropagation()
@@ -323,18 +384,30 @@ export default function Sidebar() {
 
     if (dragItem.type === 'board') {
       const draggedBoardId = dragItem.id
-
-      if (draggedBoardId === targetBoard._id) return
-      if (isDescendantOf(targetBoard._id, draggedBoardId)) return
+      const dropPosition = dragOverPosition || 'inside'
 
       try {
-        await moveBoard(draggedBoardId, targetBoard._id)
-        setExpandedBoardIds((prev) =>
-          prev.includes(targetBoard._id) ? prev : [...prev, targetBoard._id]
-        )
+        await moveBoardByDrop(draggedBoardId, targetBoard._id, dropPosition)
       } catch (err) {
         console.error('Move board failed', err)
       }
+    }
+  }
+
+  const handleDropOnRoot = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const dragItem = parseDragItem(e)
+    setDragOverId(null)
+    setDragOverPosition(null)
+
+    if (!dragItem || dragItem.type !== 'board') return
+
+    try {
+      await moveBoardByDrop(dragItem.id, null, 'root')
+    } catch (err) {
+      console.error('Move board to root failed', err)
     }
   }
 
@@ -344,7 +417,9 @@ export default function Sidebar() {
     const isSelected = selectedBoardId === board._id
     const isMenuOpen = openMenuId === board._id
     const isDragging = draggingBoardId === board._id
-    const isDragOver = dragOverId === board._id && dragOverPosition === 'inside'
+    const isDragOverInside = dragOverId === board._id && dragOverPosition === 'inside'
+    const isDragOverBefore = dragOverId === board._id && dragOverPosition === 'before'
+    const isDragOverAfter = dragOverId === board._id && dragOverPosition === 'after'
 
     const leftPadding = 4 
     const childIndentClass =
@@ -366,8 +441,12 @@ export default function Sidebar() {
           onDragOver={(e) => {
             e.preventDefault()
             e.stopPropagation()
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+            const y = e.clientY - rect.top
+            const isTop = y < rect.height * 0.3
+            const isBottom = y > rect.height * 0.7
             setDragOverId(board._id)
-            setDragOverPosition('inside')
+            setDragOverPosition(isTop ? 'before' : isBottom ? 'after' : 'inside')
           }}
           onDragLeave={(e) => {
             const related = e.relatedTarget as Node | null
@@ -377,27 +456,33 @@ export default function Sidebar() {
           }}
           onDrop={(e) => handleDropOnBoard(e, board)}
           className={`
-            group relative flex w-full items-center gap-2 rounded-xl py-2 text-xs font-medium
+            group relative flex w-full items-center gap-2 rounded-xl py-2 text-xs font-medium cursor-grab
             transition-all duration-200 lg:text-sm
-            ${isDragging ? 'opacity-40' : ''}
-            ${isDragOver ? 'scale-[1.015]' : ''}
+            ${isDragging ? 'opacity-35 scale-[0.985] shadow-sm' : 'hover:bg-primary/[0.05]'}
+            ${isDragOverInside ? 'scale-[1.015] shadow-md' : ''}
           `}
           style={{
             paddingLeft: `${leftPadding}px`,
             paddingRight: '8px',
             backgroundColor: isSelected
               ? 'rgba(101, 84, 192, 0.18)'
-              : isDragOver
+              : isDragOverInside
               ? 'rgba(101, 84, 192, 0.12)'
               : 'transparent',
             color: isSelected ? 'rgb(101, 84, 192)' : 'rgb(63, 63, 70)',
-            boxShadow: isDragOver
+            boxShadow: isDragOverInside
               ? '0 0 0 1px rgba(101, 84, 192, 0.35), 0 10px 30px rgba(101, 84, 192, 0.12)'
               : 'none',
           }}
         >
-          {isDragOver && (
+          {isDragOverInside && (
             <div className="pointer-events-none absolute inset-0 rounded-xl border border-primary/50 bg-primary/5" />
+          )}
+          {isDragOverBefore && (
+            <div className="pointer-events-none absolute left-2 right-2 top-0 h-[2px] rounded bg-primary shadow-[0_0_0_2px_rgba(99,102,241,0.15)]" />
+          )}
+          {isDragOverAfter && (
+            <div className="pointer-events-none absolute left-2 right-2 bottom-0 h-[2px] rounded bg-primary shadow-[0_0_0_2px_rgba(99,102,241,0.15)]" />
           )}
 
           <button
@@ -431,7 +516,13 @@ export default function Sidebar() {
             }}
             className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5 cursor-pointer text-left"
           >
-            {/* <GripVertical className={isDragging ? "h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/70 opacity-0 transition group-hover:opacity-100 cursor-grabbing" : "h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/70 opacity-0 transition group-hover:opacity-100 cursor-grab"} /> */}
+            <GripVertical
+              className={
+                isDragging
+                  ? 'h-3.5 w-3.5 flex-shrink-0 text-primary opacity-100'
+                  : 'h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100'
+              }
+            />
             <Folder className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
             <span className="truncate">{board.name}</span>
           </button>
@@ -544,16 +635,38 @@ export default function Sidebar() {
 
         <div className="flex-1 overflow-y-auto px-2 py-3 lg:px-3 lg:py-4">
           {loading ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">Loading collections...</div>
-          ) : filteredCollections.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-muted-foreground">Loading boards...</div>
+          ) : filteredBoards.length === 0 ? (
             <div className="px-3 py-2 text-sm text-muted-foreground">
-              No collections found.
+              No boards found.
             </div>
           ) : (
             <div className="space-y-1">
-              {filteredCollections.map((collection) => renderBoardTree(collection as FlatBoard, 0))}
+              {filteredBoards.map((board) => renderBoardTree(board as FlatBoard, 0))}
             </div>
           )}
+
+          <div
+            onDragOver={(e) => {
+              e.preventDefault()
+              const dragItem = parseDragItem(e)
+              if (dragItem?.type !== 'board') return
+              setDragOverId('__root__')
+              setDragOverPosition('root')
+            }}
+            onDragLeave={() => {
+              setDragOverId((prev) => (prev === '__root__' ? null : prev))
+              setDragOverPosition((prev) => (prev === 'root' ? null : prev))
+            }}
+            onDrop={handleDropOnRoot}
+            className={`mt-3 rounded-lg border border-dashed px-3 py-2 text-xs font-medium transition-all ${
+              dragOverId === '__root__' && dragOverPosition === 'root'
+                ? 'border-primary bg-primary/12 text-primary shadow-[0_0_0_2px_rgba(99,102,241,0.12)]'
+                : 'border-border/60 text-muted-foreground hover:border-primary/50 hover:text-foreground'
+            }`}
+          >
+            Drop here to move as top-level board
+          </div>
         </div>
 
         <div className="space-y-3 border-t border-border/50 p-3 lg:p-4">
@@ -577,19 +690,19 @@ export default function Sidebar() {
             size="sm"
           >
             <Plus className="h-3 w-3 lg:h-4 lg:w-4" />
-            <span className="hidden lg:inline">Add Collection</span>
+            <span className="hidden lg:inline">Add Board</span>
             <span className="lg:hidden">Add</span>
           </Button>
         </div>
       </div>
 
-      <CreateCollectionModal
+      <CreateBoardModal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
           setForcedParentId(null)
         }}
-        onCreateCollection={handleCreateCollection}
+        onCreateBoard={handleCreateBoard}
         parentBoards={allBoards.map((board) => ({
           _id: board._id,
           name: `${'— '.repeat(getBoardDepth(board._id))}${board.name}`,
@@ -603,7 +716,7 @@ export default function Sidebar() {
         boardName={renameTarget?.name || ''}
         title={
           renameTarget?.type === 'parent'
-            ? 'Rename Collection'
+            ? 'Rename Board'
             : 'Rename Subboard'
         }
         onSubmit={(nextName) =>

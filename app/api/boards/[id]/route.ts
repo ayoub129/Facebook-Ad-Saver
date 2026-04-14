@@ -17,6 +17,37 @@ function normalizeBoard(board: any) {
   }
 }
 
+async function collectBoardTreeIds(userId: string, rootBoardId: string) {
+  const allBoards = await Board.find({ userId }).select("_id parentBoardId").lean()
+
+  const byParent = new Map<string, string[]>()
+  for (const board of allBoards) {
+    const parentId = board.parentBoardId?.toString()
+    const boardId = board._id?.toString()
+    if (!boardId) continue
+    if (!parentId) continue
+    if (!byParent.has(parentId)) byParent.set(parentId, [])
+    byParent.get(parentId)?.push(boardId)
+  }
+
+  const ids: string[] = []
+  const queue: string[] = [rootBoardId]
+  const visited = new Set<string>([rootBoardId])
+
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    ids.push(current)
+    const children = byParent.get(current) || []
+    for (const childId of children) {
+      if (visited.has(childId)) continue
+      visited.add(childId)
+      queue.push(childId)
+    }
+  }
+
+  return ids
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,18 +97,13 @@ export async function DELETE(
       { success: false, message: 'Board not found' }, { status: 404 }
     )
 
-    if (!board.parentBoardId) {
-      const subboards = await Board.find({ parentBoardId: id, userId }).lean()
-      const subboardIds = subboards.map((s: any) => s._id)
-      if (subboardIds.length > 0) {
-        await Ad.deleteMany({ userId, boardIds: { $in: subboardIds } })
-        await Board.deleteMany({ parentBoardId: id, userId })
-      }
-    } else {
-      await Ad.deleteMany({ userId, boardIds: id })
-    }
+    const boardIdsToDelete = await collectBoardTreeIds(String(userId), String(id))
 
-    await Board.findByIdAndDelete(id)
+    // Remove ads assigned to any board being deleted (including the root board).
+    await Ad.deleteMany({ userId, boardIds: { $in: boardIdsToDelete } })
+
+    // Remove all boards in the deleted tree.
+    await Board.deleteMany({ userId, _id: { $in: boardIdsToDelete } })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

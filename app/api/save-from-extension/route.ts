@@ -3,6 +3,37 @@ import { connectToDatabase } from '@/lib/mongodb'
 import { getToken } from 'next-auth/jwt'
 import Ad from '@/models/Ad'
 
+function normalizeUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const result: string[] = []
+
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const url = item.trim()
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    result.push(url)
+  }
+
+  return result
+}
+
+function mergeUrls(...batches: unknown[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+
+  for (const batch of batches) {
+    for (const url of normalizeUrls(batch)) {
+      if (seen.has(url)) continue
+      seen.add(url)
+      result.push(url)
+    }
+  }
+
+  return result
+}
+
 export async function POST(req: NextRequest) {
   // Works for both cookie-based (browser) and header-based (extension) auth
   const token = await getToken({
@@ -24,27 +55,64 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
 
-    const ad = await Ad.create({
-      userId,
-      boardIds: Array.isArray(body.boardIds) ? body.boardIds : [],
-      advertiserName: body.advertiserName || '',
-      adLibraryId: body.adLibraryId || '',
-      adCopy: body.adCopy || '',
-      headline: body.headline || '',
-      description: body.description || '',
-      ctaText: body.ctaText || '',
-      ctaUrl: body.ctaUrl || '',
-      domain: body.domain || '',
-      landingPageUrl: body.landingPageUrl || '',
-      platform: body.platform || 'facebook_ad_library',
-      status: body.status || '',
-      startDate: body.startDate || '',
-      images: body.images || [],
-      videos: body.videos || [],
-      thumbnailUrl: body.thumbnailUrl || '',
-      rawHtml: body.rawHtml || '',
+    const incomingImages = normalizeUrls(body.images)
+    const incomingVideos = normalizeUrls(body.videos)
+    const adLibraryId = typeof body.adLibraryId === 'string' ? body.adLibraryId.trim() : ''
+
+    const existingAd = adLibraryId
+      ? await Ad.findOne({ userId, adLibraryId })
+      : null
+
+    const mergedBoardIds = Array.isArray(body.boardIds)
+      ? body.boardIds
+      : existingAd?.boardIds || []
+
+    const mergedImageCandidates = mergeUrls(
+      incomingImages,
+      body.thumbnailUrl ? [body.thumbnailUrl] : [],
+      existingAd?.imageCandidates || [],
+      existingAd?.images || []
+    )
+    const mergedVideoCandidates = mergeUrls(
+      incomingVideos,
+      existingAd?.videoCandidates || [],
+      existingAd?.videos || []
+    )
+
+    const updatePayload = {
+      boardIds: mergedBoardIds,
+      advertiserName: body.advertiserName || existingAd?.advertiserName || '',
+      adLibraryId: adLibraryId || existingAd?.adLibraryId || '',
+      adCopy: body.adCopy || existingAd?.adCopy || '',
+      headline: body.headline || existingAd?.headline || '',
+      description: body.description || existingAd?.description || '',
+      ctaText: body.ctaText || existingAd?.ctaText || '',
+      ctaUrl: body.ctaUrl || existingAd?.ctaUrl || '',
+      domain: body.domain || existingAd?.domain || '',
+      landingPageUrl: body.landingPageUrl || existingAd?.landingPageUrl || '',
+      platform: body.platform || existingAd?.platform || 'facebook_ad_library',
+      status: body.status || existingAd?.status || '',
+      startDate: body.startDate || existingAd?.startDate || '',
+      images: incomingImages.length ? incomingImages : existingAd?.images || [],
+      videos: incomingVideos.length ? incomingVideos : existingAd?.videos || [],
+      thumbnailUrl: body.thumbnailUrl || existingAd?.thumbnailUrl || incomingImages[1] || incomingImages[0] || '',
+      imageCandidates: mergedImageCandidates,
+      videoCandidates: mergedVideoCandidates,
+      refreshStatus: (incomingImages.length || incomingVideos.length) ? 'ok' : (existingAd?.refreshStatus || 'idle'),
+      refreshError: '',
+      lastRefreshedAt: (incomingImages.length || incomingVideos.length)
+        ? new Date()
+        : existingAd?.lastRefreshedAt || undefined,
+      rawHtml: body.rawHtml || existingAd?.rawHtml || '',
       rawPayload: body,
-    })
+    }
+
+    const ad = existingAd
+      ? await Ad.findByIdAndUpdate(existingAd._id, updatePayload, { new: true })
+      : await Ad.create({
+          userId,
+          ...updatePayload,
+        })
 
     return NextResponse.json({ success: true, ad })
   } catch (error) {

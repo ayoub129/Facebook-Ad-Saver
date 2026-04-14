@@ -18,6 +18,11 @@ export interface IAd {
   images: string[];
   videos: string[];
   thumbnailUrl: string;
+  imageCandidates: string[];
+  videoCandidates: string[];
+  refreshStatus: "idle" | "ok" | "failed";
+  refreshError: string;
+  lastRefreshedAt?: Date;
   rawHtml: string;
   rawPayload: unknown;
   createdAt?: Date;
@@ -48,6 +53,11 @@ const AdSchema = new Schema<IAd>(
     images: { type: [String], default: [] },
     videos: { type: [String], default: [] },
     thumbnailUrl: { type: String, default: "" },
+    imageCandidates: { type: [String], default: [] },
+    videoCandidates: { type: [String], default: [] },
+    refreshStatus: { type: String, default: "idle" },
+    refreshError: { type: String, default: "" },
+    lastRefreshedAt: { type: Date, default: null },
     rawHtml: { type: String, default: "" },
     rawPayload: { type: Schema.Types.Mixed, default: {} },
   },

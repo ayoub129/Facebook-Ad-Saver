@@ -23,6 +23,11 @@ function normalizeAd(ad: any) {
     images: Array.isArray(ad.images) ? ad.images : [],
     videos: Array.isArray(ad.videos) ? ad.videos : [],
     thumbnailUrl: ad.thumbnailUrl || "",
+    imageCandidates: Array.isArray(ad.imageCandidates) ? ad.imageCandidates : [],
+    videoCandidates: Array.isArray(ad.videoCandidates) ? ad.videoCandidates : [],
+    refreshStatus: ad.refreshStatus || "idle",
+    refreshError: ad.refreshError || "",
+    lastRefreshedAt: ad.lastRefreshedAt ? new Date(ad.lastRefreshedAt).toISOString() : null,
     rawHtml: ad.rawHtml || "",
     rawPayload: ad.rawPayload || {},
     createdAt: ad.createdAt ? new Date(ad.createdAt).toISOString() : null,
@@ -48,13 +53,9 @@ export async function GET(req: NextRequest) {
         { success: false, message: "Board not found" }, { status: 404 }
       )
 
-      if (selectedBoard.parentBoardId) {
-        query.boardIds = boardId
-      } else {
-        const subboards = await Board.find({ parentBoardId: boardId, userId }).lean()
-        const subboardIds = subboards.map((b: any) => b._id.toString())
-        query.boardIds = { $in: subboardIds }
-      }
+      // Show only ads explicitly saved to the selected board.
+      // Parent boards should not include ads saved only in child subboards.
+      query.boardIds = boardId
     }
 
     const ads = await Ad.find(query).sort({ createdAt: -1 }).lean()

@@ -10,10 +10,10 @@ export type ParentBoardOption = {
   name: string
 }
 
-interface CreateCollectionModalProps {
+interface CreateBoardModalProps {
   isOpen: boolean
   onClose: () => void
-  onCreateCollection: (data: {
+  onCreateBoard: (data: {
     name: string
     parentBoardId: string | null
   }) => Promise<void> | void
@@ -21,21 +21,21 @@ interface CreateCollectionModalProps {
   defaultParentBoardId?: string | null
 }
 
-export default function CreateCollectionModal({
+export default function CreateBoardModal({
   isOpen,
   onClose,
-  onCreateCollection,
+  onCreateBoard,
   parentBoards,
   defaultParentBoardId = null,
-}: CreateCollectionModalProps) {
-  const [collectionName, setCollectionName] = useState('')
+}: CreateBoardModalProps) {
+  const [boardName, setBoardName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createAsSubboard, setCreateAsSubboard] = useState(false)
   const [parentBoardId, setParentBoardId] = useState('')
 
   useEffect(() => {
     if (!isOpen) {
-      setCollectionName('')
+      setBoardName('')
       setIsSubmitting(false)
       setCreateAsSubboard(false)
       setParentBoardId('')
@@ -63,32 +63,32 @@ export default function CreateCollectionModal({
   }, [createAsSubboard, parentBoardId, parentBoards, defaultParentBoardId])
 
   const canSubmit = useMemo(() => {
-    if (!collectionName.trim()) return false
+    if (!boardName.trim()) return false
     if (createAsSubboard && !parentBoardId) return false
     return true
-  }, [collectionName, createAsSubboard, parentBoardId])
+  }, [boardName, createAsSubboard, parentBoardId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const trimmedName = collectionName.trim()
+    const trimmedName = boardName.trim()
     if (!trimmedName || isSubmitting) return
     if (createAsSubboard && !parentBoardId) return
 
     try {
       setIsSubmitting(true)
 
-      await onCreateCollection({
+      await onCreateBoard({
         name: trimmedName,
         parentBoardId: createAsSubboard ? parentBoardId : null,
       })
 
-      setCollectionName('')
+      setBoardName('')
       setCreateAsSubboard(false)
       setParentBoardId('')
       onClose()
     } catch (error) {
-      console.error('Failed to create collection:', error)
+      console.error('Failed to create board:', error)
     } finally {
       setIsSubmitting(false)
     }
@@ -101,7 +101,7 @@ export default function CreateCollectionModal({
       <div className="mx-4 w-full max-w-md rounded-lg bg-card p-6 shadow-lg">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-foreground">
-            {createAsSubboard ? 'Create Subboard' : 'Create Collection'}
+            {createAsSubboard ? 'Create Subboard' : 'Create Board'}
           </h2>
 
           <button
@@ -117,17 +117,17 @@ export default function CreateCollectionModal({
         <form onSubmit={handleSubmit}>
           <div className="mb-5">
             <label
-              htmlFor="collection-name"
+              htmlFor="board-name"
               className="mb-2 block text-sm font-medium text-foreground"
             >
               Name
             </label>
 
             <Input
-              id="collection-name"
-              placeholder="Enter collection or subboard name"
-              value={collectionName}
-              onChange={(e) => setCollectionName(e.target.value)}
+              id="board-name"
+              placeholder="Enter board or subboard name"
+              value={boardName}
+              onChange={(e) => setBoardName(e.target.value)}
               className="w-full"
               autoFocus
             />
@@ -175,7 +175,7 @@ export default function CreateCollectionModal({
 
               {parentBoards.length === 0 && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Create a top-level collection first, then you can add subboards under it.
+                  Create a top-level board first, then you can add subboards under it.
                 </p>
               )}
             </div>
