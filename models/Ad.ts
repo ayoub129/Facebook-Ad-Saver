@@ -18,8 +18,14 @@ export interface IAd {
   images: string[];
   videos: string[];
   thumbnailUrl: string;
+  localImages: string[];
+  localVideos: string[];
+  localThumbnailUrl: string;
   imageCandidates: string[];
   videoCandidates: string[];
+  mediaCacheStatus: "idle" | "processing" | "ok" | "failed";
+  mediaCacheError: string;
+  mediaCachedAt?: Date;
   refreshStatus: "idle" | "ok" | "failed";
   refreshError: string;
   lastRefreshedAt?: Date;
@@ -53,8 +59,14 @@ const AdSchema = new Schema<IAd>(
     images: { type: [String], default: [] },
     videos: { type: [String], default: [] },
     thumbnailUrl: { type: String, default: "" },
+    localImages: { type: [String], default: [] },
+    localVideos: { type: [String], default: [] },
+    localThumbnailUrl: { type: String, default: "" },
     imageCandidates: { type: [String], default: [] },
     videoCandidates: { type: [String], default: [] },
+    mediaCacheStatus: { type: String, default: "idle" },
+    mediaCacheError: { type: String, default: "" },
+    mediaCachedAt: { type: Date, default: null },
     refreshStatus: { type: String, default: "idle" },
     refreshError: { type: String, default: "" },
     lastRefreshedAt: { type: Date, default: null },

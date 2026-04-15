@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, LogOut, User } from 'lucide-react'
+import { ChevronDown, LogOut, Share2, User } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import { Input } from '@/components/ui/input'
 import AdCard, { type DashboardAd } from './ad-card'
@@ -9,6 +9,8 @@ import { useBoards } from '@/components/ui/boards-provider'
 import DeleteBoardModal from '@/components/delete-board-modal'
 import MoveAdModal from '@/components/move-ad-modal'
 import { Card } from '@/components/ui/card'
+import ShareBoardModal from '@/components/share-board-modal'
+import { useToast } from '@/hooks/use-toast'
 
 interface AdGridProps {
   onAdClick: (adId: string) => void
@@ -31,6 +33,8 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     setSelectedBoardId,
     selectedBoard,
   } = useBoards()
+  const canManageSelectedBoard =
+    selectedBoard?.accessRole === 'owner' || selectedBoard?.accessRole === 'editor'
 
   const [ads, setAds] = useState<AdItem[]>([])
   const [loadingAds, setLoadingAds] = useState(false)
@@ -43,9 +47,23 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
   const [moveTarget, setMoveTarget] = useState<AdItem | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [subboardPreviewAds, setSubboardPreviewAds] = useState<Record<string, AdItem[]>>({})
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+  const { toast } = useToast()
 
   // 🔥 NEW
   const [columnsCount, setColumnsCount] = useState(4)
+
+  const [shareToken, setShareToken] = useState<string | null>(null)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setShareToken(params.get('shareToken'))
+  }, [])
+
+  const withShareToken = (path: string) => {
+    if (!shareToken) return path
+    const hasQuery = path.includes('?')
+    return `${path}${hasQuery ? '&' : '?'}shareToken=${encodeURIComponent(shareToken)}`
+  }
 
   const handleDeleteAd = (adId: string) => {
     const ad = ads.find((item) => item._id === adId)
@@ -63,7 +81,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     if (!deleteTarget) return
 
     try {
-      const res = await fetch(`/api/ads/${deleteTarget._id}`, {
+      const res = await fetch(withShareToken(`/api/ads/${deleteTarget._id}`), {
         method: 'DELETE',
       })
 
@@ -77,7 +95,10 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
       setDeleteTarget(null)
     } catch (error) {
       console.error(error)
-      alert('Failed to delete ad')
+      toast({
+        title: 'Failed to delete ad',
+        description: error instanceof Error ? error.message : 'Please try again.',
+      })
       throw error
     }
   }
@@ -85,7 +106,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
   const confirmMoveAd = async (boardId: string) => {
     if (!moveTarget) return
 
-    const res = await fetch(`/api/ads/${moveTarget._id}`, {
+    const res = await fetch(withShareToken(`/api/ads/${moveTarget._id}`), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -111,7 +132,10 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
       await signOut({ callbackUrl: '/login' })
     } catch (error) {
       console.error('Sign out failed:', error)
-      alert('Failed to sign out')
+      toast({
+        title: 'Failed to sign out',
+        description: 'Please try again.',
+      })
     } finally {
       setIsSigningOut(false)
     }
@@ -127,7 +151,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
 
         setLoadingAds(true)
 
-        const res = await fetch(`/api/ads?boardId=${encodeURIComponent(selectedBoardId)}`, {
+        const res = await fetch(withShareToken(`/api/ads?boardId=${encodeURIComponent(selectedBoardId)}`), {
           method: 'GET',
           cache: 'no-store',
         })
@@ -230,7 +254,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
       try {
         const entries = await Promise.all(
           childBoards.map(async (board) => {
-            const res = await fetch(`/api/ads?boardId=${encodeURIComponent(board._id)}`, {
+            const res = await fetch(withShareToken(`/api/ads?boardId=${encodeURIComponent(board._id)}`), {
               method: 'GET',
               cache: 'no-store',
             })
@@ -388,6 +412,16 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
                 )}
               </div>
 
+              <button
+                type="button"
+                onClick={() => setIsShareModalOpen(true)}
+                disabled={!selectedBoardId || !canManageSelectedBoard}
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Share2 className="h-4 w-4" />
+                Share
+              </button>
+
               {/* PROFILE */}
               <div className="relative">
                 <button
@@ -433,12 +467,13 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
                       <AdCard
                         key={item.id}
                         ad={item.ad}
+                        canManage={canManageSelectedBoard}
                         isPlaying={playingVideoId === item.id}
                         onVideoPlay={() => handleVideoPlay(item.id)}
                         onVideoPause={handleVideoPause}
                         onClick={() => onAdClick(item.id)}
-                        onDelete={handleDeleteAd}
-                        onMove={handleMoveAd}
+                        onDelete={canManageSelectedBoard ? handleDeleteAd : undefined}
+                        onMove={canManageSelectedBoard ? handleMoveAd : undefined}
                       />
                     ) : (
                       <Card
@@ -505,6 +540,14 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
         boards={boards}
         adName={moveTarget?.advertiserName || 'this'}
         currentBoardId={moveTarget?.boardIds?.[0] || null}
+      />
+
+      <ShareBoardModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        boardId={selectedBoardId}
+        boardName={selectedBoard?.name || 'Selected board'}
+        shareToken={shareToken}
       />
     </>
   )

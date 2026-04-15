@@ -35,6 +35,7 @@ export type DashboardAd = {
 
 interface AdCardProps {
   ad: DashboardAd
+  canManage?: boolean
   isPlaying?: boolean
   onVideoPlay?: () => void
   onVideoPause?: () => void
@@ -45,6 +46,7 @@ interface AdCardProps {
 
 export default function AdCard({
   ad,
+  canManage = true,
   isPlaying = false,
   onVideoPlay,
   onVideoPause,
@@ -211,8 +213,9 @@ export default function AdCard({
       isDragging ? 'opacity-0' : ''
     }`}
       onMouseEnter={() => setIsHovering(true)}
-      draggable
+      draggable={canManage}
       onDragStart={(e) => {
+        if (!canManage) return
         e.dataTransfer.setData('adId', localAd._id)
       
         setIsDragging(true)
@@ -242,7 +245,7 @@ export default function AdCard({
       onDragEnd={(e) => {
         setIsDragging(false)
       }}
-      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      style={{ cursor: canManage ? (isDragging ? 'grabbing' : 'grab') : 'pointer' }}
       onMouseLeave={() => setIsHovering(false)}
     >
       <div className="p-2 sm:p-3 pb-1.5 sm:pb-2 flex items-center justify-between border-b border-border/50 bg-card/50" onClick={onClick}>
@@ -271,18 +274,19 @@ export default function AdCard({
           </div>
         </div>
 
-        <div className="relative">
-          <button
-            className="p-1 hover:bg-muted rounded-md transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-            onClick={(e) => {
-              e.stopPropagation()
-              setShowMenu((prev) => !prev)
-            }}
-          >
-            <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
-          </button>
+        {canManage && (
+          <div className="relative">
+            <button
+              className="p-1 hover:bg-muted rounded-md transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowMenu((prev) => !prev)
+              }}
+            >
+              <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
+            </button>
 
-          {showMenu && (
+            {showMenu && (
             <div className="absolute right-0 top-full z-20 mt-2 min-w-[168px] overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-xl backdrop-blur">
               <button
                 onClick={(e) => {
@@ -307,8 +311,9 @@ export default function AdCard({
                 Delete ad
               </button>
             </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div

@@ -12,6 +12,10 @@ export type Board = {
   createdAt?: string
   updatedAt?: string
   source: string
+  accessRole?: 'owner' | 'editor' | 'viewer' | 'none'
+  accessSource?: 'owner' | 'private_share' | 'public_link' | 'none'
+  isOwnedByMe?: boolean
+  isSharedWithMe?: boolean
 }
 
 type CreateBoardInput = {
@@ -51,13 +55,28 @@ export function BoardsProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedBoardId, setSelectedBoardId] = useState<string | null>(null)
+  const [shareToken, setShareToken] = useState<string | null>(null)
+  const [requestedBoardId, setRequestedBoardId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setShareToken(params.get('shareToken'))
+    setRequestedBoardId(params.get('boardId'))
+  }, [])
+
+  const withShareToken = (path: string) => {
+    if (!shareToken) return path
+    const hasQuery = path.includes('?')
+    const encoded = encodeURIComponent(shareToken)
+    return `${path}${hasQuery ? '&' : '?'}shareToken=${encoded}`
+  }
 
   const refreshBoards = async () => {
     try {
       setLoading(true)
       setError(null)
 
-      const res = await fetch('/api/boards', {
+      const res = await fetch(withShareToken('/api/boards'), {
         method: 'GET',
         cache: 'no-store',
       })
@@ -82,6 +101,9 @@ export function BoardsProvider({ children }: { children: React.ReactNode }) {
       setBoards(nextBoards)
 
       setSelectedBoardId((current) => {
+        if (requestedBoardId && nextBoards.some((board: Board) => board._id === requestedBoardId)) {
+          return requestedBoardId
+        }
         if (current && nextBoards.some((board: Board) => board._id === current)) {
           return current
         }
@@ -98,8 +120,47 @@ export function BoardsProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const collectDescendantIds = (list: Board[], rootId: string) => {
+    const childrenByParent = new Map<string, string[]>()
+    for (const board of list) {
+      if (!board.parentBoardId) continue
+      const parent = board.parentBoardId
+      if (!childrenByParent.has(parent)) childrenByParent.set(parent, [])
+      childrenByParent.get(parent)?.push(board._id)
+    }
+
+    const visited = new Set<string>([rootId])
+    const queue = [rootId]
+
+    while (queue.length > 0) {
+      const current = queue.shift() as string
+      const children = childrenByParent.get(current) || []
+      for (const childId of children) {
+        if (visited.has(childId)) continue
+        visited.add(childId)
+        queue.push(childId)
+      }
+    }
+
+    return visited
+  }
+
   const createBoard = async (payload: CreateBoardInput) => {
-    const res = await fetch('/api/boards', {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const optimisticBoard: Board = {
+      _id: tempId,
+      name: payload.name,
+      slug: payload.slug,
+      parentBoardId: payload.parentBoardId ?? null,
+      order: payload.order ?? 0,
+      source: 'app',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+
+    setBoards((prev) => [...prev, optimisticBoard])
+
+    const res = await fetch(withShareToken('/api/boards'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -107,18 +168,39 @@ export function BoardsProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify(payload),
     })
 
-    const result = await res.json()
+    const result = await res.json().catch(() => null)
 
     if (!res.ok || !result?.success) {
+      setBoards((prev) => prev.filter((board) => board._id !== tempId))
       throw new Error(result?.message || 'Failed to create board')
     }
 
-    await refreshBoards()
-    return result.board as Board
+    const createdBoard = result.board as Board
+    setBoards((prev) =>
+      prev.map((board) => (board._id === tempId ? createdBoard : board))
+    )
+    return createdBoard
   }
 
   const updateBoard = async (boardId: string, payload: UpdateBoardInput) => {
-    const res = await fetch(`/api/boards/${boardId}`, {
+    let previousBoards: Board[] = []
+    setBoards((prev) => {
+      previousBoards = prev
+      return prev.map((board) =>
+        board._id === boardId
+          ? {
+              ...board,
+              ...(payload.name !== undefined ? { name: payload.name } : {}),
+              ...(payload.slug !== undefined ? { slug: payload.slug } : {}),
+              ...(payload.parentBoardId !== undefined ? { parentBoardId: payload.parentBoardId } : {}),
+              ...(payload.order !== undefined ? { order: payload.order } : {}),
+              updatedAt: new Date().toISOString(),
+            }
+          : board
+      )
+    })
+
+    const res = await fetch(withShareToken(`/api/boards/${boardId}`), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -126,32 +208,64 @@ export function BoardsProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify(payload),
     })
 
-    const result = await res.json()
+    const result = await res.json().catch(() => null)
 
     if (!res.ok || !result?.success) {
+      setBoards(previousBoards)
       throw new Error(result?.message || 'Failed to update board')
     }
 
-    await refreshBoards()
-    return result.board as Board
+    const updatedBoard = result.board as Board
+    setBoards((prev) =>
+      prev.map((board) => (board._id === boardId ? { ...board, ...updatedBoard } : board))
+    )
+    return updatedBoard
   }
 
   const deleteBoard = async (boardId: string) => {
-    const res = await fetch(`/api/boards/${boardId}`, {
+    let previousBoards: Board[] = []
+    setBoards((prev) => {
+      previousBoards = prev
+      const idsToDelete = collectDescendantIds(prev, boardId)
+      const next = prev.filter((board) => !idsToDelete.has(board._id))
+      setSelectedBoardId((current) => (current && idsToDelete.has(current) ? null : current))
+      return next
+    })
+
+    const res = await fetch(withShareToken(`/api/boards/${boardId}`), {
       method: 'DELETE',
     })
 
-    const result = await res.json()
+    const result = await res.json().catch(() => null)
 
     if (!res.ok || !result?.success) {
+      setBoards(previousBoards)
       throw new Error(result?.message || 'Failed to delete board')
     }
-
-    await refreshBoards()
   }
 
   const moveBoard = async (boardId: string, newParentBoardId: string | null) => {
-    const res = await fetch(`/api/boards/${boardId}`, {
+    let previousBoards: Board[] = []
+    setBoards((prev) => {
+      previousBoards = prev
+      const destinationSiblings = prev
+        .filter((board) => board.parentBoardId === newParentBoardId && board._id !== boardId)
+        .sort((a, b) => a.order - b.order)
+      const nextOrder = destinationSiblings.length
+
+      return prev.map((board) =>
+        board._id === boardId
+          ? {
+              ...board,
+              parentBoardId: newParentBoardId,
+              order: nextOrder,
+              updatedAt: new Date().toISOString(),
+            }
+          : board
+      )
+    })
+
+    const res = await fetch(withShareToken(`/api/boards/${boardId}`), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -161,22 +275,26 @@ export function BoardsProvider({ children }: { children: React.ReactNode }) {
       }),
     })
 
-    const result = await res.json()
+    const result = await res.json().catch(() => null)
 
     if (!res.ok || !result?.success) {
+      setBoards(previousBoards)
       throw new Error(result?.message || 'Failed to move board')
     }
 
-    await refreshBoards()
-    return result.board as Board
+    const movedBoard = result.board as Board
+    setBoards((prev) =>
+      prev.map((board) => (board._id === boardId ? { ...board, ...movedBoard } : board))
+    )
+    return movedBoard
   }
 
   const { status } = useSession()
   useEffect(() => {
-    if (status === 'authenticated') {
+    if (status === 'authenticated' || (status === 'unauthenticated' && shareToken)) {
       refreshBoards()
     }
-  }, [status])
+  }, [status, shareToken])
   
 
 

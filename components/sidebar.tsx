@@ -41,6 +41,8 @@ type FlatBoard = {
   _id: string
   name: string
   parentBoardId: string | null
+  accessRole?: 'owner' | 'editor' | 'viewer' | 'none'
+  isSharedWithMe?: boolean
   order?: number
   createdAt?: string
   updatedAt?: string
@@ -52,6 +54,7 @@ type DragItem =
 
 export default function Sidebar() {
   const {
+    boards,
     topLevelBoards,
     getSubboards,
     selectedBoardId,
@@ -60,7 +63,6 @@ export default function Sidebar() {
     updateBoard,
     deleteBoard,
     moveBoard,
-    refreshBoards,
     loading,
   } = useBoards()
 
@@ -77,31 +79,54 @@ export default function Sidebar() {
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   const [dragOverPosition, setDragOverPosition] = useState<'before' | 'inside' | 'after' | 'root' | null>(null)
   const [draggingBoardId, setDraggingBoardId] = useState<string | null>(null)
+  const [shareToken, setShareToken] = useState<string | null>(null)
 
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
   const hasInitializedExpanded = useRef(false)
 
-  const allBoards = useMemo<FlatBoard[]>(() => {
-    const result: FlatBoard[] = []
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setShareToken(params.get('shareToken'))
+  }, [])
 
-    const walk = (boards: FlatBoard[]) => {
-      boards.forEach((board) => {
-        result.push(board)
-        const children = getSubboards(board._id) as FlatBoard[]
-        if (children.length > 0) {
-          walk(children)
-        }
-      })
-    }
+  const withShareToken = (path: string) => {
+    if (!shareToken) return path
+    const hasQuery = path.includes('?')
+    return `${path}${hasQuery ? '&' : '?'}shareToken=${encodeURIComponent(shareToken)}`
+  }
 
-    walk(topLevelBoards as FlatBoard[])
-    return result
-  }, [topLevelBoards, getSubboards])
+  const allBoards = useMemo<FlatBoard[]>(
+    () => (boards as FlatBoard[]).slice(),
+    [boards]
+  )
 
   const boardMap = useMemo(() => {
     return new Map(allBoards.map((board) => [board._id, board]))
   }, [allBoards])
+
+  const canEditBoardNode = (board: FlatBoard | undefined | null) =>
+    Boolean(board && (board.accessRole === 'owner' || board.accessRole === 'editor'))
+
+  const visibleTopBoards = useMemo(() => {
+    return allBoards
+      .filter((board) => !board.parentBoardId || !boardMap.has(board.parentBoardId))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  }, [allBoards, boardMap])
+
+  const ownedTopBoards = useMemo(
+    () => visibleTopBoards.filter((board: any) => !board.isSharedWithMe),
+    [visibleTopBoards]
+  )
+
+  const sharedTopBoards = useMemo(
+    () => visibleTopBoards.filter((board: any) => Boolean(board.isSharedWithMe)),
+    [visibleTopBoards]
+  )
+  const hasAnyEditableBoard = useMemo(
+    () => allBoards.some((board) => canEditBoardNode(board)),
+    [allBoards]
+  )
 
   const getDescendantIds = (boardId: string): string[] => {
     const descendants: string[] = []
@@ -187,7 +212,7 @@ export default function Sidebar() {
   }) => {
     const siblingCount = data.parentBoardId
       ? getSubboards(data.parentBoardId).length
-      : topLevelBoards.length
+      : visibleTopBoards.length
 
     const newBoard = await createBoard({
       name: data.name,
@@ -253,10 +278,20 @@ export default function Sidebar() {
 
   const filteredBoards = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
-    const top = topLevelBoards as FlatBoard[]
+    const top = visibleTopBoards as FlatBoard[]
     if (!term) return top
     return top.filter((board) => matchesSearch(board, term))
-  }, [topLevelBoards, searchTerm])
+  }, [visibleTopBoards, searchTerm])
+
+  const filteredOwnedBoards = useMemo(
+    () => filteredBoards.filter((board: any) => !board.isSharedWithMe),
+    [filteredBoards]
+  )
+
+  const filteredSharedBoards = useMemo(
+    () => filteredBoards.filter((board: any) => Boolean(board.isSharedWithMe)),
+    [filteredBoards]
+  )
 
   const getMoveParentOptions = useMemo(() => {
     return allBoards.map((board) => ({
@@ -296,23 +331,17 @@ export default function Sidebar() {
   }
 
   const getSiblingBoards = (parentId: string | null): FlatBoard[] => {
-    return parentId ? (getSubboards(parentId) as FlatBoard[]) : (topLevelBoards as FlatBoard[])
+    return parentId ? (getSubboards(parentId) as FlatBoard[]) : (visibleTopBoards as FlatBoard[])
   }
 
   const persistBoardOrder = async (boards: FlatBoard[], parentId: string | null) => {
-    await Promise.all(
-      boards.map((board, index) =>
-        fetch(`/api/boards/${board._id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            parentBoardId: parentId,
-            order: index,
-          }),
-        })
-      )
+    const updates = boards.map((board, index) =>
+      updateBoard(board._id, {
+        parentBoardId: parentId,
+        order: index,
+      })
     )
-    await refreshBoards()
+    await Promise.all(updates)
   }
 
   const moveBoardByDrop = async (
@@ -361,10 +390,11 @@ export default function Sidebar() {
     setDragOverPosition(null)
 
     if (!dragItem) return
+    if (!canEditBoardNode(targetBoard)) return
 
     if (dragItem.type === 'ad') {
       try {
-        await fetch(`/api/ads/${dragItem.id}`, {
+        await fetch(withShareToken(`/api/ads/${dragItem.id}`), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -390,6 +420,8 @@ export default function Sidebar() {
         await moveBoardByDrop(draggedBoardId, targetBoard._id, dropPosition)
       } catch (err) {
         console.error('Move board failed', err)
+      } finally {
+        setDraggingBoardId(null)
       }
     }
   }
@@ -408,6 +440,8 @@ export default function Sidebar() {
       await moveBoardByDrop(dragItem.id, null, 'root')
     } catch (err) {
       console.error('Move board to root failed', err)
+    } finally {
+      setDraggingBoardId(null)
     }
   }
 
@@ -420,6 +454,7 @@ export default function Sidebar() {
     const isDragOverInside = dragOverId === board._id && dragOverPosition === 'inside'
     const isDragOverBefore = dragOverId === board._id && dragOverPosition === 'before'
     const isDragOverAfter = dragOverId === board._id && dragOverPosition === 'after'
+    const canEditCurrent = canEditBoardNode(board)
 
     const leftPadding = 4 
     const childIndentClass =
@@ -435,10 +470,11 @@ export default function Sidebar() {
         className={`relative ${isMenuOpen ? 'z-50' : ''}`}
       >
         <div
-          draggable
+          draggable={canEditCurrent}
           onDragStart={(e) => onBoardDragStart(e, board._id)}
           onDragEnd={onBoardDragEnd}
           onDragOver={(e) => {
+            if (!canEditCurrent) return
             e.preventDefault()
             e.stopPropagation()
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -456,7 +492,7 @@ export default function Sidebar() {
           }}
           onDrop={(e) => handleDropOnBoard(e, board)}
           className={`
-            group relative flex w-full items-center gap-2 rounded-xl py-2 text-xs font-medium cursor-grab
+            group relative flex w-full items-center gap-2 rounded-xl py-2 text-xs font-medium
             transition-all duration-200 lg:text-sm
             ${isDragging ? 'opacity-35 scale-[0.985] shadow-sm' : 'hover:bg-primary/[0.05]'}
             ${isDragOverInside ? 'scale-[1.015] shadow-md' : ''}
@@ -516,49 +552,55 @@ export default function Sidebar() {
             }}
             className="relative z-10 flex min-w-0 flex-1 items-center gap-2.5 cursor-pointer text-left"
           >
-            <GripVertical
-              className={
-                isDragging
-                  ? 'h-3.5 w-3.5 flex-shrink-0 text-primary opacity-100'
-                  : 'h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100'
-              }
-            />
+            {canEditCurrent && (
+              <GripVertical
+                className={
+                  isDragging
+                    ? 'h-3.5 w-3.5 flex-shrink-0 text-primary opacity-100'
+                    : 'h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/70 opacity-0 transition-opacity group-hover:opacity-100'
+                }
+              />
+            )}
             <Folder className="h-3 w-3 flex-shrink-0 lg:h-4 lg:w-4" />
             <span className="truncate">{board.name}</span>
           </button>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setForcedParentId(board._id)
-              setIsModalOpen(true)
-              setOpenMenuId(null)
-              setExpandedBoardIds((prev) =>
-                prev.includes(board._id) ? prev : [...prev, board._id]
-              )
-            }}
-            className="relative z-10 rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 cursor-pointer"
-            title="Add child board"
-            type="button"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          {canEditCurrent && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setForcedParentId(board._id)
+                  setIsModalOpen(true)
+                  setOpenMenuId(null)
+                  setExpandedBoardIds((prev) =>
+                    prev.includes(board._id) ? prev : [...prev, board._id]
+                  )
+                }}
+                className="relative z-10 rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 cursor-pointer"
+                title="Add child board"
+                type="button"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
 
-          <button
-            ref={isMenuOpen ? menuButtonRef : null}
-            onClick={(e) => {
-              e.stopPropagation()
-              setOpenMenuId((prev) => (prev === board._id ? null : board._id))
-            }}
-            className="relative z-10 rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 cursor-pointer"
-            title="Board actions"
-            type="button"
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </button>
+              <button
+                ref={isMenuOpen ? menuButtonRef : null}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOpenMenuId((prev) => (prev === board._id ? null : board._id))
+                }}
+                className="relative z-10 rounded p-1 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 cursor-pointer"
+                title="Board actions"
+                type="button"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
         </div>
 
-        {isMenuOpen && (
+        {canEditCurrent && isMenuOpen && (
           <div
             ref={isMenuOpen ? menuRef : null}
             className="absolute right-2 top-full mt-1 min-w-[170px] overflow-hidden rounded-xl border border-border bg-card shadow-lg z-[999]"
@@ -642,11 +684,24 @@ export default function Sidebar() {
             </div>
           ) : (
             <div className="space-y-1">
-              {filteredBoards.map((board) => renderBoardTree(board as FlatBoard, 0))}
+              {filteredOwnedBoards.length > 0 && (
+                <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  My boards
+                </div>
+              )}
+              {filteredOwnedBoards.map((board) => renderBoardTree(board as FlatBoard, 0))}
+
+              {filteredSharedBoards.length > 0 && (
+                <div className="mb-2 mt-4 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Shared with me
+                </div>
+              )}
+              {filteredSharedBoards.map((board) => renderBoardTree(board as FlatBoard, 0))}
             </div>
           )}
 
-          <div
+          {hasAnyEditableBoard && (
+            <div
             onDragOver={(e) => {
               e.preventDefault()
               const dragItem = parseDragItem(e)
@@ -666,7 +721,8 @@ export default function Sidebar() {
             }`}
           >
             Drop here to move as top-level board
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-3 border-t border-border/50 p-3 lg:p-4">
@@ -680,19 +736,21 @@ export default function Sidebar() {
             />
           </div>
 
-          <Button
-            onClick={() => {
-              setForcedParentId(null)
-              setIsModalOpen(true)
-              setOpenMenuId(null)
-            }}
-            className="h-8 w-full cursor-pointer gap-2 bg-primary text-xs font-medium text-primary-foreground transition-all duration-200 hover:bg-primary/90 lg:h-9 lg:text-sm"
-            size="sm"
-          >
-            <Plus className="h-3 w-3 lg:h-4 lg:w-4" />
-            <span className="hidden lg:inline">Add Board</span>
-            <span className="lg:hidden">Add</span>
-          </Button>
+          {hasAnyEditableBoard && (
+            <Button
+              onClick={() => {
+                setForcedParentId(null)
+                setIsModalOpen(true)
+                setOpenMenuId(null)
+              }}
+              className="h-8 w-full cursor-pointer gap-2 bg-primary text-xs font-medium text-primary-foreground transition-all duration-200 hover:bg-primary/90 lg:h-9 lg:text-sm"
+              size="sm"
+            >
+              <Plus className="h-3 w-3 lg:h-4 lg:w-4" />
+              <span className="hidden lg:inline">Add Board</span>
+              <span className="lg:hidden">Add</span>
+            </Button>
+          )}
         </div>
       </div>
 

@@ -21,6 +21,7 @@ import { Card } from '@/components/ui/card'
 import { useBoards } from '@/components/ui/boards-provider'
 import type { DashboardAd } from './ad-card'
 import { transcribeVideoUrlInBrowser } from '@/lib/browser-transcription'
+import { useToast } from '@/hooks/use-toast'
 
 interface AdDetailViewProps {
   adId: string
@@ -34,13 +35,15 @@ type BoardOption = {
 }
 
 export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
-  const { boards, refreshBoards } = useBoards()
+  const { boards, refreshBoards, selectedBoard } = useBoards()
+  const canManageAds =
+    selectedBoard?.accessRole === 'owner' || selectedBoard?.accessRole === 'editor'
 
   const [ad, setAd] = useState<DashboardAd | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [selectedBoard, setSelectedBoard] = useState('')
+  const [selectedBoardLabel, setSelectedBoardLabel] = useState('')
   const [showBoardDropdown, setShowBoardDropdown] = useState(false)
 
   const [isMuted, setIsMuted] = useState(false)
@@ -57,8 +60,21 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   const [isCopyingScript, setIsCopyingScript] = useState(false)
   const [isDownloadingMedia, setIsDownloadingMedia] = useState(false)
   const [isSavingBoard, setIsSavingBoard] = useState(false)
+  const [shareToken, setShareToken] = useState<string | null>(null)
+  const { toast } = useToast()
 
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setShareToken(params.get('shareToken'))
+  }, [])
+
+  const withShareToken = (path: string) => {
+    if (!shareToken) return path
+    const hasQuery = path.includes('?')
+    return `${path}${hasQuery ? '&' : '?'}shareToken=${encodeURIComponent(shareToken)}`
+  }
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -81,7 +97,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
         setError(null)
         setVideoError(false)
 
-        const res = await fetch(`/api/ads/${adId}`, {
+        const res = await fetch(withShareToken(`/api/ads/${adId}`), {
           method: 'GET',
           cache: 'no-store',
         })
@@ -336,15 +352,18 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
         ''
 
       if (!scriptText) {
-        alert('No script available.')
+        toast({ title: 'No script available' })
         return
       }
 
       await navigator.clipboard.writeText(scriptText)
-      alert('Script copied successfully.')
+      toast({ title: 'Script copied' })
     } catch (err) {
       console.error('Copy script failed:', err)
-      alert(err instanceof Error ? err.message : 'Failed to copy script')
+      toast({
+        title: 'Failed to copy script',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      })
     } finally {
       setIsCopyingScript(false)
     }
@@ -402,7 +421,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
       }
 
       if (!galleryImages.length) {
-        alert('No media available to download.')
+        toast({ title: 'No media available to download' })
         return
       }
 
@@ -424,7 +443,10 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
       }
     } catch (err) {
       console.error('Media download failed:', err)
-      alert(err instanceof Error ? err.message : 'Failed to download media')
+      toast({
+        title: 'Failed to download media',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      })
     } finally {
       setIsDownloadingMedia(false)
     }
@@ -432,7 +454,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
   const handleDownloadThumbnail = async () => {
     if (!previewImage) {
-      alert('No thumbnail available.')
+      toast({ title: 'No thumbnail available' })
       return
     }
 
@@ -455,12 +477,12 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   // const refreshMedia = async (reason: 'auto' | 'manual') => { ... }
 
   const handleSaveToBoard = async (boardId: string, boardName: string) => {
-    if (!ad) return
+    if (!ad || !canManageAds) return
   
     try {
       setIsSavingBoard(true)
   
-      const res = await fetch(`/api/ads/${ad._id}`, {
+      const res = await fetch(withShareToken(`/api/ads/${ad._id}`), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -478,11 +500,14 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   
       // Replace boardIds entirely instead of merging
       setAd((prev) => (prev ? { ...prev, boardIds: [boardId] } : prev))
-      setSelectedBoard(boardName)
+      setSelectedBoardLabel(boardName)
       setShowBoardDropdown(false)
     } catch (err) {
       console.error('Save to board failed:', err)
-      alert(err instanceof Error ? err.message : 'Failed to save ad to board')
+      toast({
+        title: 'Failed to save ad to board',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      })
     } finally {
       setIsSavingBoard(false)
     }
@@ -793,52 +818,54 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
               </Card>
             </div>
 
-            <div>
-              <p className="mb-2 text-white text-xs font-semibold uppercase text-muted-foreground">
-                Save to Board
-              </p>
+            {canManageAds && (
+              <div>
+                <p className="mb-2 text-white text-xs font-semibold uppercase text-muted-foreground">
+                  Save to Board
+                </p>
 
-              <div className="relative">
-                <button
-                  onClick={async () => {
-                    if (!showBoardDropdown) {
-                      try {
-                        await refreshBoards()
-                      } catch (error) {
-                        console.error('Failed to refresh boards:', error)
+                <div className="relative">
+                  <button
+                    onClick={async () => {
+                      if (!showBoardDropdown) {
+                        try {
+                          await refreshBoards()
+                        } catch (error) {
+                          console.error('Failed to refresh boards:', error)
+                        }
                       }
-                    }
-                    setShowBoardDropdown((prev) => !prev)
-                  }}
-                  className="w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
-                  type="button"
-                  disabled={isSavingBoard}
-                >
-                  {isSavingBoard ? 'Saving...' : selectedBoard || 'Select board...'}
-                </button>
+                      setShowBoardDropdown((prev) => !prev)
+                    }}
+                    className="w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                    type="button"
+                    disabled={isSavingBoard}
+                  >
+                    {isSavingBoard ? 'Saving...' : selectedBoardLabel || 'Select board...'}
+                  </button>
 
-                {showBoardDropdown && (
-                  <div className="absolute left-0 right-0 top-full z-10 mt-2 max-h-56 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-                    {boardOptions.length > 0 ? (
-                      boardOptions.map((board) => (
-                        <button
-                          key={board.id}
-                          onClick={() => handleSaveToBoard(board.id, board.fullName)}
-                          className="w-full cursor-pointer px-3 py-2 text-left text-sm text-[#120c2b] transition-colors hover:bg-muted"
-                          type="button"
-                        >
-                          {board.fullName}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-3 py-2 text-sm text-[#120c2b]">
-                        No boards found
-                      </div>
-                    )}
-                  </div>
-                )}
+                  {showBoardDropdown && (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-2 max-h-56 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+                      {boardOptions.length > 0 ? (
+                        boardOptions.map((board) => (
+                          <button
+                            key={board.id}
+                            onClick={() => handleSaveToBoard(board.id, board.fullName)}
+                            className="w-full cursor-pointer px-3 py-2 text-left text-sm text-[#120c2b] transition-colors hover:bg-muted"
+                            type="button"
+                          >
+                            {board.fullName}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-[#120c2b]">
+                          No boards found
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <p className="mb-3 text-xs font-semibold uppercase text-white">

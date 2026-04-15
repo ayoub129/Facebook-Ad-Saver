@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/button'
 
 type ParentBoardOption = {
   _id: string
-  name: string
+  name: string  
 }
 
 interface MoveBoardModalProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (parentBoardId: string) => Promise<void> | void
+  onSubmit: (parentBoardId: string | null) => Promise<void> | void
   boardName: string
   currentParentBoardId: string | null
   parentBoards: ParentBoardOption[]
@@ -53,6 +53,20 @@ export default function MoveBoardModal({
       onClose()
     } catch (error) {
       console.error('Failed to move board:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleMakeTopLevel = async () => {
+    if (isSubmitting) return
+
+    try {
+      setIsSubmitting(true)
+      await onSubmit(null)
+      onClose()
+    } catch (error) {
+      console.error('Failed to make board top-level:', error)
     } finally {
       setIsSubmitting(false)
     }
@@ -103,6 +117,15 @@ export default function MoveBoardModal({
           </div>
 
           <div className="flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleMakeTopLevel}
+              disabled={isSubmitting}
+              className="cursor-pointer"
+            >
+              Make it a board
+            </Button>
             <Button
               type="button"
               variant="outline"

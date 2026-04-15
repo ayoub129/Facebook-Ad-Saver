@@ -7,6 +7,7 @@ import { useBoards } from '@/components/ui/boards-provider'
 import RenameBoardModal from '@/components/rename-board-modal'
 import MoveBoardModal from '@/components/move-board-modal'
 import DeleteBoardModal from '@/components/delete-board-modal'
+import { useToast } from '@/hooks/use-toast'
 
 type DashboardAd = {
   _id: string
@@ -53,6 +54,7 @@ export default function BoardOverview({
   const [renameTarget, setRenameTarget] = useState<BoardActionTarget | null>(null)
   const [moveTarget, setMoveTarget] = useState<BoardActionTarget | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BoardActionTarget | null>(null)
+  const { toast } = useToast()
 
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -103,6 +105,8 @@ export default function BoardOverview({
     () => boards.find((board) => board._id === parentBoardId) || null,
     [boards, parentBoardId]
   )
+  const canManageParent =
+    parentBoard?.accessRole === 'owner' || parentBoard?.accessRole === 'editor'
 
   const subboards = useMemo(() => getSubboards(parentBoardId), [getSubboards, parentBoardId])
 
@@ -123,7 +127,7 @@ export default function BoardOverview({
     setOpenMenuId(null)
   }
 
-  const handleMoveSubboard = async (boardId: string, nextParentId: string) => {
+  const handleMoveSubboard = async (boardId: string, nextParentId: string | null) => {
     await moveBoard(boardId, nextParentId)
 
     setMoveTarget(null)
@@ -137,7 +141,10 @@ export default function BoardOverview({
       await signOut({ callbackUrl: '/login' })
     } catch (error) {
       console.error('Sign out failed:', error)
-      alert('Failed to sign out')
+      toast({
+        title: 'Failed to sign out',
+        description: 'Please try again.',
+      })
     } finally {
       setIsSigningOut(false)
     }
@@ -214,18 +221,20 @@ export default function BoardOverview({
                           <p className="text-sm text-muted-foreground">View board</p>
                         </div>
 
-                        <button
-                          ref={isMenuOpen ? menuButtonRef : null}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setOpenMenuId((prev) => (prev === subboard._id ? null : subboard._id))
-                          }}
-                          className="cursor-pointer rounded-full p-2 hover:bg-muted"
-                          type="button"
-                          title="Subboard actions"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </button>
+                        {canManageParent && (
+                          <button
+                            ref={isMenuOpen ? menuButtonRef : null}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOpenMenuId((prev) => (prev === subboard._id ? null : subboard._id))
+                            }}
+                            className="cursor-pointer rounded-full p-2 hover:bg-muted"
+                            type="button"
+                            title="Subboard actions"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
 
                       <div className="flex gap-2">
@@ -260,7 +269,7 @@ export default function BoardOverview({
                       </div>
                     </button>
 
-                    {isMenuOpen && (
+                    {canManageParent && isMenuOpen && (
                       <div
                         ref={isMenuOpen ? menuRef : null}
                         className="absolute right-4 top-16 z-[999] min-w-[170px] overflow-hidden rounded-xl border border-border bg-card shadow-lg"

@@ -7,6 +7,17 @@ export interface IBoard {
   parentBoardId: mongoose.Types.ObjectId | null;
   order: number;
   source: string;
+  isPublicShared: boolean;
+  publicShareToken: string;
+  publicShareRole: "viewer" | "editor";
+  shareEntries: {
+    email: string;
+    invitedUserId?: mongoose.Types.ObjectId | null;
+    role: "viewer" | "editor";
+    status: "pending" | "accepted";
+    invitedAt?: Date;
+    acceptedAt?: Date | null;
+  }[];
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -28,6 +39,19 @@ const BoardSchema = new Schema<IBoard>(
     },
     order: { type: Number, default: 0 },
     source: { type: String, default: "app" },
+    isPublicShared: { type: Boolean, default: false },
+    publicShareToken: { type: String, default: "", index: true },
+    publicShareRole: { type: String, enum: ["viewer", "editor"], default: "editor" },
+    shareEntries: [
+      {
+        email: { type: String, required: true, lowercase: true, trim: true },
+        invitedUserId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+        role: { type: String, enum: ["viewer", "editor"], default: "viewer" },
+        status: { type: String, enum: ["pending", "accepted"], default: "pending" },
+        invitedAt: { type: Date, default: Date.now },
+        acceptedAt: { type: Date, default: null },
+      },
+    ],
   },
   { timestamps: true }
 );

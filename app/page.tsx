@@ -6,18 +6,27 @@ import { useSession } from 'next-auth/react'
 import Sidebar from '@/components/sidebar'
 import AdGrid from '@/components/ad-grid'
 import AdDetailView from '@/components/ad-detail-view'
+import PendingShareInvitesModal from '@/components/pending-share-invites-modal'
+import { useBoards } from '@/components/ui/boards-provider'
 
 export default function Home() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { status } = useSession()
+  const { refreshBoards } = useBoards()
+  const [hasShareToken, setHasShareToken] = useState(false)
 
   const [selectedAdId, setSelectedAdId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    const params = new URLSearchParams(window.location.search)
+    setHasShareToken(Boolean(params.get('shareToken')))
+  }, [])
+
+  useEffect(() => {
+    if (status === 'unauthenticated' && !hasShareToken) {
       router.replace('/login?callbackUrl=/')
     }
-  }, [status, router])
+  }, [status, router, hasShareToken])
 
   useEffect(() => {
     if (!selectedAdId) return
@@ -38,7 +47,7 @@ export default function Home() {
     )
   }
 
-  if (status === 'unauthenticated') {
+  if (status === 'unauthenticated' && !hasShareToken) {
     return null
   }
 
@@ -55,6 +64,14 @@ export default function Home() {
             onBack={() => setSelectedAdId(null)}
           />
         </div>
+      )}
+
+      {status === 'authenticated' && (
+        <PendingShareInvitesModal
+          onResolved={() => {
+            void refreshBoards()
+          }}
+        />
       )}
     </div>
   )

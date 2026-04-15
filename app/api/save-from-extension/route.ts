@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/mongodb'
 import { getToken } from 'next-auth/jwt'
 import Ad from '@/models/Ad'
+import { cacheAdMediaLocally } from '@/lib/media-cache'
+import Board from '@/models/board'
+import { User } from '@/models/User'
+import { canEditBoard } from '@/lib/board-access'
 
 function normalizeUrls(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -54,6 +58,8 @@ export async function POST(req: NextRequest) {
     await connectToDatabase()
 
     const body = await req.json()
+    const user = await User.findById(userId).select('email').lean()
+    const email = user?.email || ''
 
     const incomingImages = normalizeUrls(body.images)
     const incomingVideos = normalizeUrls(body.videos)
@@ -63,8 +69,19 @@ export async function POST(req: NextRequest) {
       ? await Ad.findOne({ userId, adLibraryId })
       : null
 
-    const mergedBoardIds = Array.isArray(body.boardIds)
-      ? body.boardIds
+    const incomingBoardIds = Array.isArray(body.boardIds) ? body.boardIds : []
+    const permittedBoardIds: string[] = []
+    if (incomingBoardIds.length > 0) {
+      const boards = await Board.find({ _id: { $in: incomingBoardIds } }).lean()
+      for (const board of boards) {
+        if (canEditBoard(board, { userId, email })) {
+          permittedBoardIds.push(String(board._id))
+        }
+      }
+    }
+
+    const mergedBoardIds = permittedBoardIds.length
+      ? permittedBoardIds
       : existingAd?.boardIds || []
 
     const mergedImageCandidates = mergeUrls(
@@ -110,9 +127,22 @@ export async function POST(req: NextRequest) {
     const ad = existingAd
       ? await Ad.findByIdAndUpdate(existingAd._id, updatePayload, { new: true })
       : await Ad.create({
-          userId,
+          userId: mergedBoardIds.length
+            ? String((await Board.findById(mergedBoardIds[0]).select('userId').lean())?.userId || userId)
+            : userId,
           ...updatePayload,
         })
+
+    if (ad?._id) {
+      const thumbnailSource = updatePayload.thumbnailUrl || mergedImageCandidates[0] || ''
+      void cacheAdMediaLocally({
+        adId: String(ad._id),
+        userId: String(ad.userId || userId),
+        imageUrls: mergedImageCandidates,
+        videoUrls: mergedVideoCandidates,
+        thumbnailUrl: thumbnailSource,
+      })
+    }
 
     return NextResponse.json({ success: true, ad })
   } catch (error) {
