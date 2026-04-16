@@ -66,6 +66,32 @@ export default function AdCard({
   const [showMenu, setShowMenu] = useState(false)
   const [videoCandidateIndex, setVideoCandidateIndex] = useState(0)
   const [imageCandidateIndex, setImageCandidateIndex] = useState(0)
+  const [shareToken, setShareToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    return params.get('shareToken')
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const next = params.get('shareToken')
+    setShareToken((prev) => (prev === next ? prev : next))
+  }, [])
+
+  const withShareToken = (path: string) => {
+    if (!shareToken) return path
+    const hasQuery = path.includes('?')
+    return `${path}${hasQuery ? '&' : '?'}shareToken=${encodeURIComponent(shareToken)}`
+  }
+
+  const shareAwareUrl = (url: string) => {
+    const value = typeof url === 'string' ? url.trim() : ''
+    if (!value) return ''
+    if (!shareToken) return value
+    if (value.startsWith('/api/media/local/')) return withShareToken(value)
+    return value
+  }
 
   useEffect(() => {
     setLocalAd(ad)
@@ -74,7 +100,7 @@ export default function AdCard({
   }, [ad])
 
   const brand = localAd.advertiserName || 'Unknown advertiser'
-  const logoImage = localAd.images?.[0] || ''
+  const logoImage = shareAwareUrl(localAd.images?.[0] || '')
 
   const videoCandidates = useMemo(() => {
     const seen = new Set<string>()
@@ -111,12 +137,12 @@ export default function AdCard({
     return result
   }, [localAd.imageCandidates, localAd.images, localAd.thumbnailUrl])
 
-  const currentVideoUrl = videoCandidates[videoCandidateIndex] || ''
-  const currentImageUrl = imageCandidates[imageCandidateIndex] || ''
+  const currentVideoUrl = shareAwareUrl(videoCandidates[videoCandidateIndex] || '')
+  const currentImageUrl = shareAwareUrl(imageCandidates[imageCandidateIndex] || '')
   const hasVideo = Boolean(currentVideoUrl)
 
   const previewImage = hasVideo
-    ? localAd.thumbnailUrl || currentImageUrl || ''
+    ? shareAwareUrl(localAd.thumbnailUrl) || currentImageUrl || ''
     : currentImageUrl || ''
 
   const brandFallback = brand.charAt(0)?.toUpperCase() || 'A'

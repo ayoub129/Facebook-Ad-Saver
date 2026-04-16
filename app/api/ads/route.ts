@@ -1,11 +1,72 @@
 import { NextRequest, NextResponse } from "next/server"
+import mongoose from "mongoose"
 import { connectToDatabase } from "@/lib/mongodb"
 import Ad from "@/models/Ad"
 import Board from "@/models/board"
 import { getSessionUser } from "@/lib/get-session-user"
 import { cacheAdMediaLocally } from "@/lib/media-cache"
 import { User } from "@/models/User"
-import { canEditBoard, canViewBoard } from "@/lib/board-access"
+import { canEditBoard, resolveBoardAccess } from "@/lib/board-access"
+
+async function canViewBoardEffective(
+  boardId: string,
+  identity: { userId: string; email: string },
+  shareToken: string | null
+): Promise<boolean> {
+  const allBoards = await Board.find({})
+    .select("_id parentBoardId userId isPublicShared publicShareToken publicShareRole shareEntries")
+    .lean()
+
+  const byId = new Map<string, any>()
+  for (const b of allBoards) byId.set(String(b._id), b)
+
+  const visited = new Set<string>()
+  let current = byId.get(String(boardId))
+
+  while (current) {
+    const currentId = String(current._id)
+    if (visited.has(currentId)) break
+    visited.add(currentId)
+
+    const access = resolveBoardAccess(current, identity, { shareToken })
+    if (access.role !== "none") return true
+
+    if (!current.parentBoardId) break
+    current = byId.get(String(current.parentBoardId))
+  }
+
+  return false
+}
+
+async function collectDescendantBoardIds(rootBoardId: string): Promise<string[]> {
+  const allBoards = await Board.find({}).select("_id parentBoardId").lean()
+
+  const byParent = new Map<string, string[]>()
+  for (const board of allBoards) {
+    const parentId = board.parentBoardId?.toString()
+    const id = board._id?.toString()
+    if (!id || !parentId) continue
+    if (!byParent.has(parentId)) byParent.set(parentId, [])
+    byParent.get(parentId)?.push(id)
+  }
+
+  const ids: string[] = []
+  const queue: string[] = [rootBoardId]
+  const visited = new Set<string>([rootBoardId])
+
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    ids.push(current)
+    const children = byParent.get(current) || []
+    for (const childId of children) {
+      if (visited.has(childId)) continue
+      visited.add(childId)
+      queue.push(childId)
+    }
+  }
+
+  return ids
+}
 
 function normalizeAd(ad: any) {
   const localImages = Array.isArray(ad.localImages) ? ad.localImages : []
@@ -63,8 +124,9 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const boardId = searchParams.get("boardId")
     const tokenFromQuery = searchParams.get("shareToken") || shareToken
+    const includeDescendantsParam = searchParams.get("includeDescendants")
 
-    let query: any = userId ? { userId } : { _id: null }
+    let query: any = {}
 
     if (boardId) {
       const selectedBoard = await Board.findById(boardId).lean()
@@ -72,10 +134,10 @@ export async function GET(req: NextRequest) {
         { success: false, message: "Board not found" }, { status: 404 }
       )
 
-      const canView = canViewBoard(
-        selectedBoard,
+      const canView = await canViewBoardEffective(
+        String(selectedBoard._id),
         { userId, email },
-        { shareToken: tokenFromQuery }
+        tokenFromQuery
       )
       if (!canView) {
         return NextResponse.json(
@@ -85,9 +147,35 @@ export async function GET(req: NextRequest) {
       }
 
       // Show only ads explicitly saved to the selected board.
-      // Parent boards should not include ads saved only in child subboards.
-      query.boardIds = boardId
-      delete query.userId
+      // Private view keeps existing behavior (only ads on that exact board).
+      // Public/shared links default to including all descendant subboards so "share board" shares its contents.
+      const includeDescendants =
+        includeDescendantsParam === "1" ||
+        Boolean(tokenFromQuery)
+
+      if (includeDescendants) {
+        const ids = await collectDescendantBoardIds(boardId)
+        const objectIds = ids
+          .filter((id) => mongoose.Types.ObjectId.isValid(id))
+          .map((id) => new mongoose.Types.ObjectId(id))
+        // Defensive: support legacy docs where boardIds may have been stored as strings.
+        query.boardIds = { $in: [...objectIds, ...ids] }
+      } else {
+        if (!mongoose.Types.ObjectId.isValid(boardId)) {
+          return NextResponse.json(
+            { success: false, message: "Invalid boardId" },
+            { status: 400 }
+          )
+        }
+        // Defensive: support legacy docs where boardIds may have been stored as strings.
+        query.boardIds = { $in: [new mongoose.Types.ObjectId(boardId), boardId] }
+      }
+    } else {
+      // No board filter: only allow fetching your own ads (unless a boardId is specified).
+      if (!userId) {
+        return NextResponse.json({ success: true, ads: [] })
+      }
+      query.userId = userId
     }
 
     const ads = await Ad.find(query).sort({ createdAt: -1 }).lean()

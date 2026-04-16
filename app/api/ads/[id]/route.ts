@@ -5,7 +5,37 @@ import { getSessionUser } from "@/lib/get-session-user"
 import { cacheAdMediaLocally, deleteAdMediaLocalFiles } from "@/lib/media-cache"
 import Board from "@/models/board"
 import { User } from "@/models/User"
-import { canEditBoard, canViewBoard } from "@/lib/board-access"
+import { canEditBoard, resolveBoardAccess } from "@/lib/board-access"
+
+async function canViewBoardEffective(
+  boardId: string,
+  identity: { userId: string; email: string },
+  shareToken: string | null
+): Promise<boolean> {
+  const allBoards = await Board.find({})
+    .select("_id parentBoardId userId isPublicShared publicShareToken publicShareRole shareEntries")
+    .lean()
+
+  const byId = new Map<string, any>()
+  for (const b of allBoards) byId.set(String(b._id), b)
+
+  const visited = new Set<string>()
+  let current = byId.get(String(boardId))
+
+  while (current) {
+    const currentId = String(current._id)
+    if (visited.has(currentId)) break
+    visited.add(currentId)
+
+    const access = resolveBoardAccess(current, identity, { shareToken })
+    if (access.role !== "none") return true
+
+    if (!current.parentBoardId) break
+    current = byId.get(String(current.parentBoardId))
+  }
+
+  return false
+}
 
 function normalizeAd(ad: any) {
   const localImages = Array.isArray(ad.localImages) ? ad.localImages : []
@@ -70,9 +100,13 @@ export async function GET(
     )
 
     const adBoards = await Board.find({ _id: { $in: ad.boardIds || [] } }).lean()
-    const canView = (userId && String(ad.userId) === String(userId)) || adBoards.some((board) =>
-      canViewBoard(board, { userId, email }, { shareToken })
-    )
+    const canView = (userId && String(ad.userId) === String(userId)) || (await (async () => {
+      for (const board of adBoards) {
+        const ok = await canViewBoardEffective(String(board._id), { userId, email }, shareToken)
+        if (ok) return true
+      }
+      return false
+    })())
     if (!canView) {
       return NextResponse.json(
         { success: false, message: "Forbidden" },

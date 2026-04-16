@@ -53,10 +53,16 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
   // 🔥 NEW
   const [columnsCount, setColumnsCount] = useState(4)
 
-  const [shareToken, setShareToken] = useState<string | null>(null)
-  useEffect(() => {
+  const [shareToken, setShareToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
     const params = new URLSearchParams(window.location.search)
-    setShareToken(params.get('shareToken'))
+    return params.get('shareToken')
+  })
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const next = params.get('shareToken')
+    setShareToken((prev) => (prev === next ? prev : next))
   }, [])
 
   const withShareToken = (path: string) => {
@@ -172,7 +178,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     }
 
     fetchAds()
-  }, [selectedBoardId, selectedBoard])
+  }, [selectedBoardId, selectedBoard, shareToken])
 
   const breadcrumbItems = useMemo(() => {
     if (!selectedBoardId) return []
@@ -274,7 +280,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
     }
 
     loadSubboardPreviews()
-  }, [childBoards])
+  }, [childBoards, shareToken])
 
   const gridItems = useMemo<GridItem[]>(() => {
     const subboardItems = childBoards.map((board) => ({

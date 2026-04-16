@@ -60,20 +60,34 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   const [isCopyingScript, setIsCopyingScript] = useState(false)
   const [isDownloadingMedia, setIsDownloadingMedia] = useState(false)
   const [isSavingBoard, setIsSavingBoard] = useState(false)
-  const [shareToken, setShareToken] = useState<string | null>(null)
+  const [shareToken, setShareToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    return params.get('shareToken')
+  })
   const { toast } = useToast()
 
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
-    setShareToken(params.get('shareToken'))
+    const next = params.get('shareToken')
+    setShareToken((prev) => (prev === next ? prev : next))
   }, [])
 
   const withShareToken = (path: string) => {
     if (!shareToken) return path
     const hasQuery = path.includes('?')
     return `${path}${hasQuery ? '&' : '?'}shareToken=${encodeURIComponent(shareToken)}`
+  }
+
+  const shareAwareUrl = (url: string) => {
+    const value = typeof url === 'string' ? url.trim() : ''
+    if (!value) return ''
+    if (!shareToken) return value
+    if (value.startsWith('/api/media/local/')) return withShareToken(value)
+    return value
   }
 
   useEffect(() => {
@@ -119,7 +133,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
     }
 
     fetchAd()
-  }, [adId])
+  }, [adId, shareToken])
 
   const boardOptions = useMemo<BoardOption[]>(() => {
     const boardMap = new Map(boards.map((board) => [board._id, board]))
@@ -146,19 +160,19 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   }, [boards])
     
   const brand = ad?.advertiserName || 'Unknown advertiser'
-  const logoImage = ad?.images?.[0] || ''
-  const videoUrl = ad?.videos?.[0] || ''
+  const logoImage = shareAwareUrl(ad?.images?.[0] || '')
+  const videoUrl = shareAwareUrl(ad?.videos?.[0] || '')
   const hasVideo = Boolean(videoUrl)
 
   const galleryImages = useMemo(() => {
     if (!ad?.images?.length) return []
-    return ad.images.slice(1).filter(Boolean)
+    return ad.images.slice(1).filter(Boolean).map((url) => shareAwareUrl(url))
   }, [ad?.images])
 
   const hasImageSlider = !hasVideo && galleryImages.length > 1
   const activeGalleryImage = galleryImages[activeImageIndex] || galleryImages[0] || ''
   const previewImage = hasVideo
-    ? ad?.thumbnailUrl || galleryImages[0] || ''
+    ? shareAwareUrl(ad?.thumbnailUrl || '') || galleryImages[0] || ''
     : activeGalleryImage || galleryImages[0] || ''
 
   useEffect(() => {

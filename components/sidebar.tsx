@@ -700,7 +700,7 @@ export default function Sidebar() {
             </div>
           )}
 
-          {hasAnyEditableBoard && (
+          {/* {hasAnyEditableBoard && (
             <div
             onDragOver={(e) => {
               e.preventDefault()
@@ -722,7 +722,7 @@ export default function Sidebar() {
           >
             Drop here to move as top-level board
             </div>
-          )}
+          )} */}
         </div>
 
         <div className="space-y-3 border-t border-border/50 p-3 lg:p-4">

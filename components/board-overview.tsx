@@ -50,6 +50,24 @@ export default function BoardOverview({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [shareToken, setShareToken] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    return params.get('shareToken')
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const next = params.get('shareToken')
+    setShareToken((prev) => (prev === next ? prev : next))
+  }, [])
+
+  const withShareToken = (path: string) => {
+    if (!shareToken) return path
+    const hasQuery = path.includes('?')
+    return `${path}${hasQuery ? '&' : '?'}shareToken=${encodeURIComponent(shareToken)}`
+  }
 
   const [renameTarget, setRenameTarget] = useState<BoardActionTarget | null>(null)
   const [moveTarget, setMoveTarget] = useState<BoardActionTarget | null>(null)
@@ -64,21 +82,46 @@ export default function BoardOverview({
   useEffect(() => {
     const fetchAds = async () => {
       try {
-        const res = await fetch('/api/ads', { cache: 'no-store' })
-        const data = await res.json()
+        const subboards = getSubboards(parentBoardId)
 
-        if (res.ok && data?.success) {
-          setAds(Array.isArray(data.ads) ? data.ads : [])
-        } else {
-          setAds([])
+        // Private view: we can fetch all user ads and filter locally (fast).
+        // Shared/public view: only fetch ads for boards the link grants access to.
+        if (!shareToken) {
+          const res = await fetch('/api/ads', { cache: 'no-store' })
+          const data = await res.json()
+          if (res.ok && data?.success) {
+            setAds(Array.isArray(data.ads) ? data.ads : [])
+          } else {
+            setAds([])
+          }
+          return
         }
+
+        if (!subboards.length) {
+          setAds([])
+          return
+        }
+
+        const results = await Promise.all(
+          subboards.map(async (board) => {
+            const res = await fetch(
+              withShareToken(`/api/ads?boardId=${encodeURIComponent(board._id)}`),
+              { cache: 'no-store' }
+            )
+            if (!res.ok) return []
+            const data = await res.json().catch(() => null)
+            return Array.isArray(data?.ads) ? (data.ads as DashboardAd[]) : []
+          })
+        )
+
+        setAds(results.flat())
       } catch {
         setAds([])
       }
     }
 
     fetchAds()
-  }, [])
+  }, [getSubboards, parentBoardId, shareToken])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
