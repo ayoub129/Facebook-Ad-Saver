@@ -20,6 +20,10 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     setHasShareToken(Boolean(params.get('shareToken')))
+    const rawAdId = params.get('adId')
+    if (rawAdId && /^[a-f0-9]{24}$/i.test(rawAdId)) {
+      setSelectedAdId(rawAdId)
+    }
   }, [])
 
   useEffect(() => {
@@ -61,7 +65,15 @@ export default function Home() {
         <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px]">
           <AdDetailView
             adId={selectedAdId}
-            onBack={() => setSelectedAdId(null)}
+            onBack={() => {
+              setSelectedAdId(null)
+              if (typeof window === 'undefined') return
+              const params = new URLSearchParams(window.location.search)
+              if (!params.has('adId')) return
+              params.delete('adId')
+              const query = params.toString()
+              router.replace(query ? `/?${query}` : '/', { scroll: false })
+            }}
           />
         </div>
       )}

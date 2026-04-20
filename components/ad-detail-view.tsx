@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,6 +16,7 @@ import {
   Maximize,
   Pencil,
   ExternalLink,
+  Share2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -22,6 +24,7 @@ import { useBoards } from '@/components/ui/boards-provider'
 import type { DashboardAd } from './ad-card'
 import { transcribeVideoUrlInBrowser } from '@/lib/browser-transcription'
 import { useToast } from '@/hooks/use-toast'
+import ShareAdModal from '@/components/share-ad-modal'
 
 interface AdDetailViewProps {
   adId: string
@@ -35,9 +38,8 @@ type BoardOption = {
 }
 
 export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
+  const { data: session } = useSession()
   const { boards, refreshBoards, selectedBoard } = useBoards()
-  const canManageAds =
-    selectedBoard?.accessRole === 'owner' || selectedBoard?.accessRole === 'editor'
 
   const [ad, setAd] = useState<DashboardAd | null>(null)
   const [loading, setLoading] = useState(true)
@@ -60,6 +62,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   const [isCopyingScript, setIsCopyingScript] = useState(false)
   const [isDownloadingMedia, setIsDownloadingMedia] = useState(false)
   const [isSavingBoard, setIsSavingBoard] = useState(false)
+  const [isShareAdModalOpen, setIsShareAdModalOpen] = useState(false)
   const [shareToken, setShareToken] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null
     const params = new URLSearchParams(window.location.search)
@@ -159,6 +162,13 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
       .sort((a, b) => a.fullName.localeCompare(b.fullName))
   }, [boards])
     
+  const canManageAds =
+    selectedBoard?.accessRole === 'owner' || selectedBoard?.accessRole === 'editor'
+  const isAdOwner = Boolean(
+    session?.user?.id && ad?.userId && String(session.user.id) === String(ad.userId)
+  )
+  const canManageAdShare = canManageAds || isAdOwner
+
   const brand = ad?.advertiserName || 'Unknown advertiser'
   const logoImage = shareAwareUrl(ad?.images?.[0] || '')
   const videoUrl = shareAwareUrl(ad?.videos?.[0] || '')
@@ -190,20 +200,6 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
     }
     img.src = previewImage
   }, [previewImage, hasVideo])
-
-  const linkedBoardNames = useMemo(() => {
-    if (!ad?.boardIds?.length) return []
-
-    const boardMap = new Map(boards.map((board) => [board._id, board]))
-
-    return ad.boardIds.map((id) => {
-      const board = boardMap.get(id)
-      if (!board) return id
-
-      const parent = board.parentBoardId ? boardMap.get(board.parentBoardId) : null
-      return parent ? `${parent.name} / ${board.name}` : board.name
-    })
-  }, [ad?.boardIds, boards])
 
   const domainText = useMemo(() => {
     if (!ad?.ctaUrl) return ''
@@ -576,6 +572,19 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
             <span className="truncate text-sm font-semibold">{brand}</span>
           </div>
+
+          {canManageAdShare && ad && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="shrink-0 cursor-pointer gap-2 bg-white/15 text-white hover:bg-white/25"
+              onClick={() => setIsShareAdModalOpen(true)}
+            >
+              <Share2 className="h-4 w-4" />
+              Share
+            </Button>
+          )}
         </div>
       </div>
 
@@ -820,18 +829,6 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
 
         <div className="w-[26%] overflow-y-auto bg-[#1d143b] p-6 text-white border-l border-white/10">
             <div className="space-y-6">
-            <div>
-              <p className="text-white mb-3 text-xs font-semibold uppercase text-muted-foreground">
-                Saved In
-              </p>
-
-              <Card className="border-white/10 bg-white/5 p-3 backdrop-blur-sm">
-                <p className="text-sm font-semibold text-foreground text-white">
-                  {linkedBoardNames.length ? linkedBoardNames.join(', ') : 'N/A'}
-                </p>
-              </Card>
-            </div>
-
             {canManageAds && (
               <div>
                 <p className="mb-2 text-white text-xs font-semibold uppercase text-muted-foreground">
@@ -949,25 +946,17 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
               </div>
             </div>
 
-            <div>
-              <p className="mb-3 text-xs font-semibold uppercase text-white">
-                Status
-              </p>
-
-              <Card className="border-white/10 bg-white/5 p-3 backdrop-blur-sm">
-                <p className="text-sm font-semibold text-emerald-500">
-                  {ad.status || 'N/A'}
-                </p>
-                {ad.refreshStatus === 'failed' && (
-                  <p className="mt-2 text-xs text-amber-300">
-                    {ad.refreshError || 'Media expired. Re-open in Facebook Ad Library and save again.'}
-                  </p>
-                )}
-              </Card>
-            </div>
           </div>
         </div>
       </div>
+
+      <ShareAdModal
+        isOpen={isShareAdModalOpen}
+        adId={ad?._id ?? null}
+        adLabel={brand}
+        shareToken={shareToken}
+        onClose={() => setIsShareAdModalOpen(false)}
+      />
     </div>
   )
 }

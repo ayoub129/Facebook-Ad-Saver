@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card'
 
 export type DashboardAd = {
   _id: string
+  userId?: string
   boardIds: string[]
   advertiserName: string
   adLibraryId: string

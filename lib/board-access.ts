@@ -10,13 +10,16 @@ type ShareEntry = {
   status?: 'pending' | 'accepted'
 }
 
-type BoardLike = {
+export type ShareableLike = {
   _id?: { toString: () => string } | string
   userId?: { toString: () => string } | string
   isPublicShared?: boolean
   publicShareToken?: string
+  publicShareRole?: 'viewer' | 'editor'
   shareEntries?: ShareEntry[]
 }
+
+type BoardLike = ShareableLike
 
 type Identity = {
   userId: string
@@ -42,30 +45,31 @@ export function maxRole(a: BoardAccessRole, b: BoardAccessRole): BoardAccessRole
   return rankRole(a) >= rankRole(b) ? a : b
 }
 
-export function resolveBoardAccess(
-  board: BoardLike,
+export function resolveShareableAccess(
+  resource: ShareableLike,
   identity: Identity,
   opts?: { shareToken?: string | null }
 ): { role: BoardAccessRole; source: BoardAccessSource } {
-  const boardOwnerId = String(board.userId || '')
+  const resourceOwnerId = String(resource.userId || '')
   const userId = String(identity.userId || '')
   const email = identity.email ? normalizeEmail(identity.email) : ''
   const shareToken = (opts?.shareToken || '').trim()
 
-  if (boardOwnerId && userId && boardOwnerId === userId) {
+  if (resourceOwnerId && userId && resourceOwnerId === userId) {
     return { role: 'owner', source: 'owner' }
   }
 
   if (
-    board.isPublicShared &&
-    board.publicShareToken &&
+    resource.isPublicShared &&
+    resource.publicShareToken &&
     shareToken &&
-    shareToken === board.publicShareToken
+    shareToken === resource.publicShareToken
   ) {
-    return { role: (board as any).publicShareRole || 'editor', source: 'public_link' }
+    const publicRole = resource.publicShareRole === 'viewer' ? 'viewer' : 'editor'
+    return { role: publicRole, source: 'public_link' }
   }
 
-  const entries = Array.isArray(board.shareEntries) ? board.shareEntries : []
+  const entries = Array.isArray(resource.shareEntries) ? resource.shareEntries : []
   for (const entry of entries) {
     const entryEmail = entry.email ? normalizeEmail(entry.email) : ''
     const entryUserId = entry.invitedUserId ? String(entry.invitedUserId) : ''
@@ -78,6 +82,14 @@ export function resolveBoardAccess(
   }
 
   return { role: 'none', source: 'none' }
+}
+
+export function resolveBoardAccess(
+  board: BoardLike,
+  identity: Identity,
+  opts?: { shareToken?: string | null }
+): { role: BoardAccessRole; source: BoardAccessSource } {
+  return resolveShareableAccess(board, identity, opts)
 }
 
 export function canViewBoard(

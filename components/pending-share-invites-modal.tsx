@@ -4,12 +4,20 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 
-type Invite = {
-  boardId: string
-  boardName: string
-  parentBoardId: string | null
-  role: 'viewer' | 'editor'
-}
+type Invite =
+  | {
+      type?: 'board'
+      boardId: string
+      boardName: string
+      parentBoardId: string | null
+      role: 'viewer' | 'editor'
+    }
+  | {
+      type: 'ad'
+      adId: string
+      adName: string
+      role: 'viewer' | 'editor'
+    }
 
 interface PendingShareInvitesModalProps {
   onResolved?: () => void
@@ -18,7 +26,7 @@ interface PendingShareInvitesModalProps {
 export default function PendingShareInvitesModal({ onResolved }: PendingShareInvitesModalProps) {
   const [loading, setLoading] = useState(true)
   const [invites, setInvites] = useState<Invite[]>([])
-  const [isSubmittingBoardId, setIsSubmittingBoardId] = useState<string | null>(null)
+  const [isSubmittingKey, setIsSubmittingKey] = useState<string | null>(null)
   const { toast } = useToast()
 
   const loadInvites = async () => {
@@ -68,23 +76,28 @@ export default function PendingShareInvitesModal({ onResolved }: PendingShareInv
     }
   }, [])
 
+  const inviteKey = (invite: Invite) =>
+    invite.type === 'ad' ? `ad:${invite.adId}` : `board:${invite.boardId}`
+
   const handleAction = async (invite: Invite, action: 'accept' | 'decline') => {
     try {
-      setIsSubmittingBoardId(invite.boardId)
+      setIsSubmittingKey(inviteKey(invite))
+      const body =
+        invite.type === 'ad'
+          ? { adId: invite.adId, action }
+          : { boardId: invite.boardId, action }
       const res = await fetch('/api/shares/invites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          boardId: invite.boardId,
-          action,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok || !data?.success) {
         throw new Error(data?.message || 'Failed to update invite')
       }
 
-      setInvites((prev) => prev.filter((item) => item.boardId !== invite.boardId))
+      const key = inviteKey(invite)
+      setInvites((prev) => prev.filter((item) => inviteKey(item as Invite) !== key))
       onResolved?.()
     } catch (error) {
       toast({
@@ -92,7 +105,7 @@ export default function PendingShareInvitesModal({ onResolved }: PendingShareInv
         description: error instanceof Error ? error.message : 'Please try again.',
       })
     } finally {
-      setIsSubmittingBoardId(null)
+      setIsSubmittingKey(null)
     }
   }
 
@@ -101,43 +114,52 @@ export default function PendingShareInvitesModal({ onResolved }: PendingShareInv
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/50">
       <div className="mx-4 w-full max-w-2xl rounded-lg bg-card p-6 shadow-lg">
-        <h2 className="text-xl font-semibold text-foreground">Pending board invites</h2>
+        <h2 className="text-xl font-semibold text-foreground">Pending share invites</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          You have pending private share invites. Choose to accept or decline each one.
+          You have pending private share invites for boards or ads. Choose to accept or decline each one.
         </p>
 
         <div className="mt-5 space-y-3">
-          {invites.map((invite) => (
-            <div key={invite.boardId} className="rounded-lg border border-border p-4">
+          {invites.map((invite) => {
+            const key = inviteKey(invite as Invite)
+            const title =
+              (invite as Invite).type === 'ad'
+                ? (invite as Extract<Invite, { type: 'ad' }>).adName
+                : (invite as Extract<Invite, { boardId: string }>).boardName
+            const subtitle =
+              (invite as Invite).type === 'ad'
+                ? 'Shared ad · View only'
+                : `Shared board · Access: ${invite.role === 'editor' ? 'Editor' : 'Viewer'}`
+            return (
+            <div key={key} className="rounded-lg border border-border p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">{invite.boardName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Access level: {invite.role === 'editor' ? 'Editor' : 'Viewer'}
-                  </p>
+                  <p className="text-sm font-semibold text-foreground">{title}</p>
+                  <p className="text-xs text-muted-foreground">{subtitle}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={isSubmittingBoardId === invite.boardId}
+                    disabled={isSubmittingKey === key}
                     className="cursor-pointer"
-                    onClick={() => handleAction(invite, 'decline')}
+                    onClick={() => handleAction(invite as Invite, 'decline')}
                   >
                     Decline
                   </Button>
                   <Button
                     type="button"
-                    disabled={isSubmittingBoardId === invite.boardId}
+                    disabled={isSubmittingKey === key}
                     className="cursor-pointer"
-                    onClick={() => handleAction(invite, 'accept')}
+                    onClick={() => handleAction(invite as Invite, 'accept')}
                   >
-                    {isSubmittingBoardId === invite.boardId ? 'Saving...' : 'Accept'}
+                    {isSubmittingKey === key ? 'Saving...' : 'Accept'}
                   </Button>
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>

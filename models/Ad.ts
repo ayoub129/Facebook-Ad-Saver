@@ -3,6 +3,17 @@ import mongoose, { Schema, Model, models } from "mongoose";
 export interface IAd {
   userId: mongoose.Types.ObjectId;
   boardIds: mongoose.Types.ObjectId[];
+  isPublicShared: boolean;
+  publicShareToken: string;
+  publicShareRole: "viewer" | "editor";
+  shareEntries: {
+    email: string;
+    invitedUserId?: mongoose.Types.ObjectId | null;
+    role: "viewer" | "editor";
+    status: "pending" | "accepted";
+    invitedAt?: Date;
+    acceptedAt?: Date | null;
+  }[];
   advertiserName: string;
   adLibraryId: string;
   adCopy: string;
@@ -44,6 +55,19 @@ const AdSchema = new Schema<IAd>(
       index: true,
     },
     boardIds: [{ type: Schema.Types.ObjectId, ref: "Board" }],
+    isPublicShared: { type: Boolean, default: false },
+    publicShareToken: { type: String, default: "", index: true },
+    publicShareRole: { type: String, enum: ["viewer", "editor"], default: "viewer" },
+    shareEntries: [
+      {
+        email: { type: String, required: true, lowercase: true, trim: true },
+        invitedUserId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+        role: { type: String, enum: ["viewer", "editor"], default: "viewer" },
+        status: { type: String, enum: ["pending", "accepted"], default: "pending" },
+        invitedAt: { type: Date, default: Date.now },
+        acceptedAt: { type: Date, default: null },
+      },
+    ],
     advertiserName: { type: String, default: "" },
     adLibraryId: { type: String, default: "" },
     adCopy: { type: String, default: "" },
