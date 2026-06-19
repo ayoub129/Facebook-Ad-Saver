@@ -322,7 +322,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
   return (
     <>
       <div className="flex h-screen flex-1 min-w-0 flex-col bg-background">
-        <div className="border-b border-border bg-background px-6 py-4">
+        <div className="border-b border-border bg-card px-6 py-4 shadow-sm shadow-red-950/5">
           <div className="flex items-center justify-between gap-4">
 
             {/* LEFT */}
@@ -360,7 +360,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
                 placeholder="Search ads..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="border-border bg-muted/50 text-sm"
+                className="border-border bg-background text-sm focus-visible:ring-primary/25"
               />
             </div>
 
@@ -394,7 +394,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
                 <button
                   type="button"
                   onClick={() => setShowSortMenu(!showSortMenu)}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-muted"
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm transition hover:border-primary/40 hover:bg-muted"
                 >
                   Sort
                   <ChevronDown className="h-4 w-4" />
@@ -422,7 +422,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
                 type="button"
                 onClick={() => setIsShareModalOpen(true)}
                 disabled={!selectedBoardId || !canManageSelectedBoard}
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm transition hover:border-primary/40 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Share2 className="h-4 w-4" />
                 Share
@@ -432,7 +432,7 @@ export default function AdGrid({ onAdClick }: AdGridProps) {
               <div className="relative">
                 <button
                   onClick={() => setShowProfileMenu(!showProfileMenu)}
-                  className="cursor-pointer rounded-lg p-2 hover:bg-muted"
+                  className="cursor-pointer rounded-lg p-2 hover:bg-muted hover:text-primary"
                 >
                   <User className="h-5 w-5" />
                 </button>

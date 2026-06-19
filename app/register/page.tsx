@@ -64,7 +64,7 @@ export default function RegisterPage() {
           </label>
           <input
             type="text"
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/20 focus:bg-white/10"
+            className="w-full rounded-xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none transition placeholder:text-red-50/35 focus:border-red-500/60 focus:bg-white/10 focus:ring-4 focus:ring-red-500/10"
             placeholder="Your name"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -78,7 +78,7 @@ export default function RegisterPage() {
           </label>
           <input
             type="email"
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/20 focus:bg-white/10"
+            className="w-full rounded-xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none transition placeholder:text-red-50/35 focus:border-red-500/60 focus:bg-white/10 focus:ring-4 focus:ring-red-500/10"
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -92,7 +92,7 @@ export default function RegisterPage() {
           </label>
           <input
             type="password"
-            className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/20 focus:bg-white/10"
+            className="w-full rounded-xl border border-white/10 bg-white/6 px-4 py-3 text-sm text-white outline-none transition placeholder:text-red-50/35 focus:border-red-500/60 focus:bg-white/10 focus:ring-4 focus:ring-red-500/10"
             placeholder="At least 6 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -109,15 +109,15 @@ export default function RegisterPage() {
 
         <Button
           type="submit"
-          className="h-11 w-full rounded-xl bg-white text-black hover:bg-zinc-200"
+          className="h-11 w-full rounded-xl bg-[#ed1227] text-sm font-semibold text-white shadow-lg shadow-red-950/30 transition hover:bg-[#cf0d20]"
           disabled={loading}
         >
           {loading ? 'Creating account...' : 'Create account'}
         </Button>
 
-        <p className="text-center text-sm text-zinc-400">
+        <p className="text-center text-sm text-red-50/60">
           Already have an account?{' '}
-          <Link href="/login" className="text-white underline underline-offset-4">
+          <Link href="/login" className="font-medium text-white underline decoration-red-500 underline-offset-4">
             Log in
           </Link>
         </p>

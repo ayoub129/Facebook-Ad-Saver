@@ -543,8 +543,8 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
   }
 
   return (
-      <div className="flex h-screen flex-col bg-[#1d143b] text-white">
-      <div className="border-b border-white/10 bg-gradient-to-r from-[#4f2bd6] to-[#6c3cf0] px-6 py-4 text-white">
+      <div className="flex h-screen flex-col bg-[#12080a] text-white">
+      <div className="border-b border-white/10 bg-gradient-to-r from-[#170709] to-[#ed1227] px-6 py-4 text-white">
         <div className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-4">
             <button
@@ -589,9 +589,9 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-[26%] overflow-y-auto border-r border-border bg-[#1d143b] p-6 text-white">
+        <div className="w-[26%] overflow-y-auto border-r border-border bg-[#170709] p-6 text-white">
           <div className="mx-auto max-w-md">
-            <div className="mb-6 flex items-center gap-3 text-violet-200">
+            <div className="mb-6 flex items-center gap-3 text-red-100">
               <Pencil className="h-5 w-5" />
               <h2 className="text-xl font-bold uppercase tracking-[0.18em]">
                 Ad Copy
@@ -632,14 +632,14 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
               <div className="border-t border-white/15" />
 
               <div className="flex flex-wrap items-center gap-4 pt-1">
-                <div className="flex items-center gap-2 text-violet-200">
+                <div className="flex items-center gap-2 text-red-100">
                   <ExternalLink className="h-4 w-4" />
                   <span className="text-sm font-semibold uppercase tracking-[0.16em]">
                     CTA
                   </span>
                 </div>
 
-                <a href={ad.ctaUrl} className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#1d143b] shadow-sm">
+                <a href={ad.ctaUrl} className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#170709] shadow-sm">
                   {ad.ctaText || 'N/A'}
                 </a>
 
@@ -651,7 +651,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
           </div>
         </div>
 
-        <div className="flex flex-1 justify-center overflow-y-auto border-r border-white/10 bg-[#120c2b] px-6 py-6">
+        <div className="flex flex-1 justify-center overflow-y-auto border-r border-white/10 bg-[#12080a] px-6 py-6">
           <div className="relative flex w-full max-w-md items-start justify-center">
             <div
               className="group relative overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl"
@@ -827,7 +827,7 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
           </div>
         </div>
 
-        <div className="w-[26%] overflow-y-auto bg-[#1d143b] p-6 text-white border-l border-white/10">
+        <div className="w-[26%] overflow-y-auto bg-[#170709] p-6 text-white border-l border-white/10">
             <div className="space-y-6">
             {canManageAds && (
               <div>
@@ -861,14 +861,14 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
                           <button
                             key={board.id}
                             onClick={() => handleSaveToBoard(board.id, board.fullName)}
-                            className="w-full cursor-pointer px-3 py-2 text-left text-sm text-[#120c2b] transition-colors hover:bg-muted"
+                            className="w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                             type="button"
                           >
                             {board.fullName}
                           </button>
                         ))
                       ) : (
-                        <div className="px-3 py-2 text-sm text-[#120c2b]">
+                        <div className="px-3 py-2 text-sm text-foreground">
                           No boards found
                         </div>
                       )}

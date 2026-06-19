@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
 import {
   ChevronDown,
   ChevronRight,
@@ -501,13 +503,13 @@ export default function Sidebar() {
             paddingLeft: `${leftPadding}px`,
             paddingRight: '8px',
             backgroundColor: isSelected
-              ? 'rgba(101, 84, 192, 0.18)'
+              ? 'rgba(237, 18, 39, 0.14)'
               : isDragOverInside
-              ? 'rgba(101, 84, 192, 0.12)'
+              ? 'rgba(237, 18, 39, 0.10)'
               : 'transparent',
-            color: isSelected ? 'rgb(101, 84, 192)' : 'rgb(63, 63, 70)',
+            color: isSelected ? 'rgb(210, 14, 31)' : 'rgb(63, 63, 70)',
             boxShadow: isDragOverInside
-              ? '0 0 0 1px rgba(101, 84, 192, 0.35), 0 10px 30px rgba(101, 84, 192, 0.12)'
+              ? '0 0 0 1px rgba(237, 18, 39, 0.35), 0 10px 30px rgba(237, 18, 39, 0.12)'
               : 'none',
           }}
         >
@@ -515,10 +517,10 @@ export default function Sidebar() {
             <div className="pointer-events-none absolute inset-0 rounded-xl border border-primary/50 bg-primary/5" />
           )}
           {isDragOverBefore && (
-            <div className="pointer-events-none absolute left-2 right-2 top-0 h-[2px] rounded bg-primary shadow-[0_0_0_2px_rgba(99,102,241,0.15)]" />
+            <div className="pointer-events-none absolute left-2 right-2 top-0 h-[2px] rounded bg-primary shadow-[0_0_0_2px_rgba(237,18,39,0.15)]" />
           )}
           {isDragOverAfter && (
-            <div className="pointer-events-none absolute left-2 right-2 bottom-0 h-[2px] rounded bg-primary shadow-[0_0_0_2px_rgba(99,102,241,0.15)]" />
+            <div className="pointer-events-none absolute left-2 right-2 bottom-0 h-[2px] rounded bg-primary shadow-[0_0_0_2px_rgba(237,18,39,0.15)]" />
           )}
 
           <button
@@ -664,15 +666,17 @@ export default function Sidebar() {
   return (
     <>
       <div className="hidden h-screen flex-col border-r border-border bg-background md:flex md:w-64 lg:w-72">
-        <div className="border-b border-border/50 p-4 lg:p-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 lg:h-10 lg:w-10">
-              <Folder className="h-4 w-4 text-primary lg:h-5 lg:w-5" />
-            </div>
-            <h1 className="text-base font-semibold text-foreground lg:text-lg">
-              Facebook Ads Saver
-            </h1>
-          </div>
+        <div className="border-b border-border/50 px-5 py-4">
+          <Link href="/" className="flex items-center" aria-label="Go to home">
+            <Image
+              src="/Vertical-transparent.png"
+              alt="Swoopface"
+              width={900}
+              height={520}
+              className="h-auto w-32 lg:w-36"
+              priority
+            />
+          </Link>
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 py-3 lg:px-3 lg:py-4">
@@ -716,7 +720,7 @@ export default function Sidebar() {
             onDrop={handleDropOnRoot}
             className={`mt-3 rounded-lg border border-dashed px-3 py-2 text-xs font-medium transition-all ${
               dragOverId === '__root__' && dragOverPosition === 'root'
-                ? 'border-primary bg-primary/12 text-primary shadow-[0_0_0_2px_rgba(99,102,241,0.12)]'
+                ? 'border-primary bg-primary/12 text-primary shadow-[0_0_0_2px_rgba(237,18,39,0.12)]'
                 : 'border-border/60 text-muted-foreground hover:border-primary/50 hover:text-foreground'
             }`}
           >

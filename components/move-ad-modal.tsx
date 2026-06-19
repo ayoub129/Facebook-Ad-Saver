@@ -142,7 +142,7 @@ export default function MoveAdModal({
             <button
               type="button"
               onClick={() => toggleNode(board._id)}
-              className="mr-1 cursor-pointer rounded p-1 text-violet-700 hover:bg-muted"
+              className="mr-1 cursor-pointer rounded p-1 text-primary hover:bg-muted"
               style={{ marginLeft: depth * 14 }}
             >
               {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -155,7 +155,7 @@ export default function MoveAdModal({
             type="button"
             onClick={() => setSelectedBoardId(board._id)}
             className={`cursor-pointer flex-1 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
-              isSelected ? 'bg-violet-100 text-violet-900' : 'text-foreground hover:bg-muted'
+              isSelected ? 'bg-primary/12 text-primary' : 'text-foreground hover:bg-muted'
             }`}
           >
             <span className="font-medium">{board.name}</span>
@@ -175,11 +175,11 @@ export default function MoveAdModal({
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4">
       <div className="w-full max-w-xl rounded-2xl border border-border bg-card p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="truncate pr-3 text-2xl font-semibold text-violet-700">Move {adName} ad</h2>
+          <h2 className="truncate pr-3 text-2xl font-semibold text-primary">Move {adName} ad</h2>
           <button
             type="button"
             onClick={onClose}
-            className="cursor-pointer rounded-md p-1 text-violet-700 hover:bg-muted"
+            className="cursor-pointer rounded-md p-1 text-primary hover:bg-muted"
             aria-label="Close"
           >
             <X className="h-6 w-6" />
@@ -191,7 +191,7 @@ export default function MoveAdModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter boards..."
-            className="mb-3 h-10 w-full rounded-xl border border-violet-200 bg-background px-3 text-base outline-none"
+            className="mb-3 h-10 w-full rounded-xl border border-border bg-background px-3 text-base outline-none focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
           />
 
           <div className="max-h-[300px] space-y-1 overflow-y-auto pr-1">
@@ -205,8 +205,8 @@ export default function MoveAdModal({
             disabled={!canSubmit}
             className={`mt-4 h-10 w-full text-base font-semibold text-white transition-colors ${
               canSubmit
-                ? 'cursor-pointer bg-violet-600 hover:bg-violet-700'
-                : 'cursor-not-allowed bg-violet-300/80'
+                ? 'cursor-pointer bg-primary hover:bg-primary/90'
+                : 'cursor-not-allowed bg-primary/35'
             }`}
           >
             {isSubmitting ? 'Moving...' : 'Move'}
