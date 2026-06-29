@@ -44,9 +44,14 @@ export default function LoginPageClient() {
         <div className="grid w-full gap-8 lg:grid-cols-[1.1fr_480px]">
           <div className="hidden min-h-[430px] rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(237,18,39,0.28),transparent_34%),linear-gradient(145deg,#1b090d,#080405_62%,#16070a)] p-10 shadow-2xl shadow-red-950/25 lg:flex lg:flex-col lg:justify-between">
             <div>
-              <div className="mb-7 inline-flex items-center rounded-full border border-red-200/20 bg-white/8 px-3 py-1 text-xs font-medium text-red-50">
+              <Link
+                href="http://www.sarandagroup.com/installswoopface"
+                className="mb-7 inline-flex items-center rounded-full border border-red-200/20 bg-white/8 px-3 py-1 text-xs font-medium text-red-50 transition hover:border-red-100/35 hover:bg-white/12"
+                target="_blank"
+                rel="noreferrer"
+              >
                 Save winning ads faster
-              </div>
+              </Link>
               <div className="mb-8 w-full max-w-[420px]">
                 <Image
                   src="/Vertical.png"
@@ -59,10 +64,17 @@ export default function LoginPageClient() {
                 />
               </div>
               <h1 className="max-w-xl text-4xl font-semibold leading-tight text-white">
-                Log in to manage saved ads and boards.
+                Save Facebook Ads for your own inspiration
               </h1>
               <p className="mt-4 max-w-lg text-sm leading-6 text-red-50/70">
-                Keep your saved ads synced with your workspace.
+                <Link
+                  href="https://www.facebook.com/ads/library"
+                  className="underline decoration-red-50/35 underline-offset-4 transition hover:text-white hover:decoration-white"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Go to Facebook Ads Library.
+                </Link>
               </p>
             </div>
           </div>
