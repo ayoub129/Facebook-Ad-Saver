@@ -50,7 +50,7 @@ export default function LoginPageClient() {
                 target="_blank"
                 rel="noreferrer"
               >
-                Save winning ads faster
+                Install Swoopface Chrome Extension
               </Link>
               <div className="mb-8 w-full max-w-[420px]">
                 <Image
@@ -92,11 +92,34 @@ export default function LoginPageClient() {
                   className="h-auto w-full"
                 />
               </div>
-              <h2 className="text-2xl font-semibold text-white">
+              <h2 className="text-2xl font-semibold text-white lg:hidden">
+                Save Facebook Ads for your own inspiration
+              </h2>
+              <h2 className="hidden text-2xl font-semibold text-white lg:block">
                 Welcome back
               </h2>
-              <p className="mt-2 text-sm text-red-50/65">
+              <p className="mt-2 text-sm text-red-50/65 lg:hidden">
+                <Link
+                  href="http://www.sarandagroup.com/installswoopface"
+                  className="underline decoration-red-50/35 underline-offset-4 transition hover:text-white hover:decoration-white"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Install Swoopface Chrome Extension
+                </Link>
+              </p>
+              <p className="mt-2 hidden text-sm text-red-50/65 lg:block">
                 Log in to access your saved ads and boards.
+              </p>
+              <p className="mt-5 text-sm leading-6 text-red-50/70 lg:hidden">
+                <Link
+                  href="https://www.facebook.com/ads/library"
+                  className="underline decoration-red-50/35 underline-offset-4 transition hover:text-white hover:decoration-white"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Go to Facebook Ads Library.
+                </Link>
               </p>
             </div>
 

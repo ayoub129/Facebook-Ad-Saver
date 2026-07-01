@@ -24,7 +24,7 @@ export default function AuthShell({
                 target="_blank"
                 rel="noreferrer"
               >
-                Save winning ads faster
+                Install Swoopface Chrome Extension
               </Link>
               <div className="mb-8 w-full max-w-[420px]">
                 <Image
@@ -52,7 +52,7 @@ export default function AuthShell({
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
               <Card className="border-white/10 bg-white/6 p-4">
                 <p className="text-xs uppercase text-red-50/45">Boards</p>
                 <p className="mt-2 text-lg font-semibold text-white">
@@ -85,8 +85,35 @@ export default function AuthShell({
                   className="h-auto w-full"
                 />
               </div>
-              <h2 className="text-2xl font-semibold text-white">{title}</h2>
-              <p className="mt-2 text-sm text-red-50/65">{subtitle}</p>
+              <h2 className="text-2xl font-semibold text-white lg:hidden">
+                Save Facebook Ads for your own inspiration
+              </h2>
+              <h2 className="hidden text-2xl font-semibold text-white lg:block">
+                {title}
+              </h2>
+              <p className="mt-2 text-sm text-red-50/65 lg:hidden">
+                <Link
+                  href="http://www.sarandagroup.com/installswoopface"
+                  className="underline decoration-red-50/35 underline-offset-4 transition hover:text-white hover:decoration-white"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Install Swoopface Chrome Extension
+                </Link>
+              </p>
+              <p className="mt-2 hidden text-sm text-red-50/65 lg:block">
+                {subtitle}
+              </p>
+              <p className="mt-5 text-sm leading-6 text-red-50/70 lg:hidden">
+                <Link
+                  href="https://www.facebook.com/ads/library"
+                  className="underline decoration-red-50/35 underline-offset-4 transition hover:text-white hover:decoration-white"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Go to Facebook Ads Library.
+                </Link>
+              </p>
             </div>
             {children}
           </Card>
