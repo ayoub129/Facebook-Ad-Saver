@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { connectToDatabase } from "@/lib/mongodb"
 import Ad from "@/models/Ad"
 import { getSessionUser } from "@/lib/get-session-user"
-import { cacheAdMediaLocally, deleteAdMediaLocalFiles } from "@/lib/media-cache"
+import { cacheAdMediaInBlob, deleteAdMediaBlobs } from "@/lib/media-cache"
 import Board from "@/models/board"
 import { User } from "@/models/User"
 import { canEditBoard } from "@/lib/board-access"
@@ -84,7 +84,7 @@ export async function GET(
       (Array.isArray((ad as any).localVideos) && (ad as any).localVideos.length > 0)
 
     if (!hasLocalMedia) {
-      void cacheAdMediaLocally({
+      void cacheAdMediaInBlob({
         adId: String((ad as any)._id),
         userId: String((ad as any).userId),
         imageUrls: [
@@ -138,9 +138,14 @@ export async function DELETE(
 
     await Ad.deleteOne({ _id: id })
 
-    await deleteAdMediaLocalFiles({
+    await deleteAdMediaBlobs({
       adId: String(ad._id),
       userId: String(ad.userId),
+      blobUrls: [
+        ...(Array.isArray(ad.localImages) ? ad.localImages : []),
+        ...(Array.isArray(ad.localVideos) ? ad.localVideos : []),
+        ad.localThumbnailUrl || '',
+      ],
     })
 
     return NextResponse.json({ success: true })

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
     let parsed: URL
     try {
-      parsed = new URL(url)
+      parsed = new URL(url, req.nextUrl.origin)
     } catch {
       return NextResponse.json(
         { success: false, message: 'Invalid URL' },
@@ -33,6 +33,9 @@ export async function GET(req: NextRequest) {
     const upstream = await fetch(parsed.toString(), {
       method: 'GET',
       cache: 'no-store',
+      headers: parsed.origin === req.nextUrl.origin
+        ? { Cookie: req.headers.get('cookie') || '' }
+        : undefined,
     })
 
     if (!upstream.ok) {

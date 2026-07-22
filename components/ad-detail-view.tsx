@@ -89,7 +89,9 @@ export default function AdDetailView({ adId, onBack }: AdDetailViewProps) {
     const value = typeof url === 'string' ? url.trim() : ''
     if (!value) return ''
     if (!shareToken) return value
-    if (value.startsWith('/api/media/local/')) return withShareToken(value)
+    if (value.startsWith('/api/media/local/') || value.startsWith('/api/media/blob/')) {
+      return withShareToken(value)
+    }
     return value
   }
 

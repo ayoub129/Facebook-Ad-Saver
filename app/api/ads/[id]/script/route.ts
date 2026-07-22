@@ -14,8 +14,14 @@ function uniqueName(prefix: string, ext: string) {
   return `${prefix}-${Date.now()}-${crypto.randomUUID()}.${ext}`
 }
 
-async function downloadFile(url: string, outputPath: string) {
-  const res = await fetch(url, { cache: 'no-store' })
+async function downloadFile(url: string, outputPath: string, request: NextRequest) {
+  const resolvedUrl = new URL(url, request.nextUrl.origin)
+  const res = await fetch(resolvedUrl, {
+    cache: 'no-store',
+    headers: resolvedUrl.origin === request.nextUrl.origin
+      ? { Cookie: request.headers.get('cookie') || '' }
+      : undefined,
+  })
 
   if (!res.ok) {
     throw new Error('Failed to fetch remote video')
@@ -69,7 +75,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await downloadFile(videoUrl, videoPath)
+    await downloadFile(videoUrl, videoPath, request)
 
     await execFileAsync('ffmpeg', [
       '-y',

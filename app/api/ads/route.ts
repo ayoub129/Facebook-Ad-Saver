@@ -4,9 +4,11 @@ import { connectToDatabase } from "@/lib/mongodb"
 import Ad from "@/models/Ad"
 import Board from "@/models/board"
 import { getSessionUser } from "@/lib/get-session-user"
-import { cacheAdMediaLocally } from "@/lib/media-cache"
+import { cacheAdMediaInBlob } from "@/lib/media-cache"
 import { User } from "@/models/User"
 import { canEditBoard, resolveBoardAccess } from "@/lib/board-access"
+
+export const maxDuration = 300
 
 async function canViewBoardEffective(
   boardId: string,
@@ -180,7 +182,7 @@ export async function GET(req: NextRequest) {
 
     const ads = await Ad.find(query).sort({ createdAt: -1 }).lean()
 
-    // Best-effort background backfill for older ads that still only have remote URLs.
+    // Best-effort background Blob backfill for older ads that only have Facebook URLs.
     for (const ad of ads.slice(0, 20)) {
       const hasLocalMedia =
         (Array.isArray((ad as any).localImages) && (ad as any).localImages.length > 0) ||
@@ -188,7 +190,7 @@ export async function GET(req: NextRequest) {
 
       if (hasLocalMedia) continue
 
-      void cacheAdMediaLocally({
+      void cacheAdMediaInBlob({
         adId: String((ad as any)._id),
         userId: String((ad as any).userId),
         imageUrls: [
@@ -276,7 +278,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (ad?._id) {
-      void cacheAdMediaLocally({
+      await cacheAdMediaInBlob({
         adId: String(ad._id),
         userId: ownerUserId,
         imageUrls: Array.isArray(body.imageCandidates)
@@ -289,9 +291,25 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const storedAd = await Ad.findById(ad._id).lean()
+    if (
+      ((Array.isArray(body.images) && body.images.length > 0) ||
+        (Array.isArray(body.videos) && body.videos.length > 0)) &&
+      storedAd?.mediaCacheStatus === 'failed'
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Ad details were saved, but its media could not be copied to Vercel Blob. You can safely retry.',
+          ad: normalizeAd(storedAd),
+        },
+        { status: 502 }
+      )
+    }
+
     return NextResponse.json({
       success: true,
-      ad: normalizeAd(ad),
+      ad: normalizeAd(storedAd || ad),
     })
   } catch (error: any) {
     console.error("POST /api/ads error:", error)

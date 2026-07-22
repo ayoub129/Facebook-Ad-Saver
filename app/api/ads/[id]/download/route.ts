@@ -23,8 +23,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const upstream = await fetch(videoUrl, {
+    const resolvedVideoUrl = new URL(videoUrl, request.nextUrl.origin)
+    const upstream = await fetch(resolvedVideoUrl, {
       cache: 'no-store',
+      headers: resolvedVideoUrl.origin === request.nextUrl.origin
+        ? { Cookie: request.headers.get('cookie') || '' }
+        : undefined,
     })
 
     if (!upstream.ok) {

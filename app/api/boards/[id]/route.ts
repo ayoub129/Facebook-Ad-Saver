@@ -3,7 +3,7 @@ import { connectToDatabase } from '@/lib/mongodb'
 import Board from '@/models/board'
 import Ad from '@/models/Ad'
 import { getSessionUser } from '@/lib/get-session-user'
-import { deleteAdMediaLocalFiles } from '@/lib/media-cache'
+import { deleteAdMediaBlobs } from '@/lib/media-cache'
 import { User } from '@/models/User'
 import { maxRole, normalizeEmail, resolveBoardAccess } from '@/lib/board-access'
 
@@ -239,15 +239,20 @@ export async function DELETE(
     // Remove ads assigned to any board being deleted (including the root board).
     const adsToDelete = await Ad.find(
       { boardIds: { $in: boardIdsToDelete } },
-      { _id: 1, userId: 1 }
+      { _id: 1, userId: 1, localImages: 1, localVideos: 1, localThumbnailUrl: 1 }
     ).lean()
     await Ad.deleteMany({ boardIds: { $in: boardIdsToDelete } })
 
-    // Best-effort local media cleanup for deleted ads.
+    // Best-effort Blob cleanup for deleted ads.
     for (const ad of adsToDelete) {
-      await deleteAdMediaLocalFiles({
+      await deleteAdMediaBlobs({
         adId: String(ad._id),
         userId: String(ad.userId),
+        blobUrls: [
+          ...(Array.isArray((ad as any).localImages) ? (ad as any).localImages : []),
+          ...(Array.isArray((ad as any).localVideos) ? (ad as any).localVideos : []),
+          (ad as any).localThumbnailUrl || '',
+        ],
       })
     }
 

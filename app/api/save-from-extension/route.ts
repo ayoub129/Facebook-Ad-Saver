@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectToDatabase } from '@/lib/mongodb'
 import { getToken } from 'next-auth/jwt'
 import Ad from '@/models/Ad'
-import { cacheAdMediaLocally } from '@/lib/media-cache'
+import { cacheAdMediaInBlob } from '@/lib/media-cache'
 import Board from '@/models/board'
 import { User } from '@/models/User'
 import { canEditBoard } from '@/lib/board-access'
+
+export const maxDuration = 300
 
 function normalizeUrls(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -135,7 +137,7 @@ export async function POST(req: NextRequest) {
 
     if (ad?._id) {
       const thumbnailSource = updatePayload.thumbnailUrl || mergedImageCandidates[0] || ''
-      void cacheAdMediaLocally({
+      await cacheAdMediaInBlob({
         adId: String(ad._id),
         userId: String(ad.userId || userId),
         imageUrls: mergedImageCandidates,
@@ -144,7 +146,22 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ success: true, ad })
+    const storedAd = ad?._id ? await Ad.findById(ad._id) : ad
+    if (
+      (mergedImageCandidates.length > 0 || mergedVideoCandidates.length > 0) &&
+      storedAd?.mediaCacheStatus === 'failed'
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Ad details were saved, but its media could not be copied to Vercel Blob. You can safely retry.',
+          ad: storedAd,
+        },
+        { status: 502 }
+      )
+    }
+
+    return NextResponse.json({ success: true, ad: storedAd })
   } catch (error) {
     console.error('POST /api/save-from-extension error:', error)
     return NextResponse.json(
